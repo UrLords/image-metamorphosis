@@ -1,0 +1,116 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Base ─────────────────────────────────────────── */
+* {
+  box-sizing: border-box;
+}
+
+body {
+  background-color: #0c1014;
+  color: #ffffff;
+  font-family: "DM Sans", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Scrollbar ────────────────────────────────────── */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #141b22;
+}
+::-webkit-scrollbar-thumb {
+  background: #2a3340;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #948979;
+}
+
+/* ── KaTeX override ───────────────────────────────── */
+.katex {
+  font-size: 1.05em !important;
+  color: #c9a86c !important;
+}
+.katex-display {
+  overflow-x: auto;
+}
+
+/* ── Pixel matrix table ───────────────────────────── */
+.pixel-matrix td {
+  width: 36px;
+  height: 36px;
+  text-align: center;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.7rem;
+  border: 1px solid #2a3340;
+  background-color: #0c1014;
+  color: #dfd0b8;
+}
+
+/* ── Kernel table ─────────────────────────────────── */
+.kernel-matrix td {
+  width: 44px;
+  height: 44px;
+  text-align: center;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.8rem;
+  border: 1px solid #c9a86c55;
+  background-color: #141b22;
+  color: #c9a86c;
+  font-weight: 600;
+}
+
+/* ── Drag-drop zone ───────────────────────────────── */
+.dropzone-active {
+  border-color: #c9a86c !important;
+  background-color: rgba(201, 168, 108, 0.05) !important;
+}
+
+/* ── Image comparison slider ─────────────────────── */
+.compare-container {
+  position: relative;
+  overflow: hidden;
+}
+.compare-divider {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: #c9a86c;
+  cursor: ew-resize;
+  z-index: 10;
+}
+.compare-divider::before {
+  content: "◀ ▶";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: #c9a86c;
+  color: #0c1014;
+  font-size: 0.7rem;
+  padding: 4px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+/* ── Step badge ───────────────────────────────────── */
+.step-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #c9a86c22;
+  border: 1px solid #c9a86c55;
+  color: #c9a86c;
+  font-size: 0.7rem;
+  font-weight: 600;
+  flex-shrink: 0;
+  font-family: "JetBrains Mono", monospace;
+}
