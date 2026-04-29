@@ -96,3 +96,12 @@ venv\Scripts\activate
 
 pip install -r requirements.txt #Ini adalah Instal apa aja yang dibutuhkan
 python app.py
+
+```
+### 2. Frontend (React)
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
