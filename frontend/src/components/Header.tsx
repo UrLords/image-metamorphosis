@@ -67,7 +67,7 @@ export default function Header({
       </h1>
 
       {/* ── Kanan: Nav ── */}
-      {/* <nav className="hidden lg:flex items-center gap-0.5">
+      <nav className="hidden lg:flex items-center gap-0.5">
         {NAV_ITEMS.map((item) => (
           <button
             key={item.id}
@@ -84,7 +84,7 @@ export default function Header({
             {item.label}
           </button>
         ))}
-      </nav> */}
+      </nav>
     </header>
   );
 }
