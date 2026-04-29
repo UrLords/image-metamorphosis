@@ -16,9 +16,7 @@
 **Image Metamorphosis** adalah aplikasi web edukasi pengolahan citra digital yang dirancang untuk memvisualisasikan proses matematis di balik setiap operasi citra. Aplikasi ini tidak hanya menampilkan gambar "Before & After", tetapi juga menjelaskan **rumus matematis**, **matriks piksel**, **kernel**, dan **langkah perhitungan manual**.
 ### Fitur Utama
 
-- **Interface Modern & Responsif** dengan tema dark elegant
-- **Header** elegan dengan warna `#DFD0B8`
-- **Sidebar** collapsible dengan animasi smooth
+- **Interface Modern & Responsif dengan Smooth Animation**
 - **Before & After** comparison yang rapi
 - **Penjelasan Edukasi Lengkap**:
   - Rumus LaTeX
