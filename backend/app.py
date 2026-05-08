@@ -44,6 +44,36 @@ def get_pixel_matrix(img: np.ndarray, n: int = 5, start_row: int = 0, start_col:
     return patch.tolist()
 
 # ─────────────────────────────────────────────────────────────
+# NOTE: Histogram grayscale
+# ─────────────────────────────────────────────────────────────
+def get_histogram(img: np.ndarray) -> list:
+    try:
+        # Pastikan gambar dalam format uint8
+        if img.dtype != np.uint8:
+            img = img.astype(np.uint8)
+
+        # Ubah ke grayscale
+        if len(img.shape) == 3:
+            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        else:
+            gray = img
+
+        # Hitung histogram
+        hist = cv2.calcHist([gray], [0], None, [256], [0, 256])
+        
+        cv2.normalize(hist, hist, 0, 1, cv2.NORM_MINMAX)
+        
+        hist_list = []
+        for val in hist:
+            v = float(val[0])
+            hist_list.append(0.0 if math.isnan(v) else v)
+            
+        return hist_list
+    except Exception as e:
+        print(f"Error Histogram: {e}")
+        return [0.0] * 256 
+
+# ─────────────────────────────────────────────────────────────
 # OPERASI 1: Info Dasar + Grayscale
 # ─────────────────────────────────────────────────────────────
 def op_grayscale(img: np.ndarray, params: dict) -> dict:
@@ -78,7 +108,9 @@ def op_grayscale(img: np.ndarray, params: dict) -> dict:
             "height": h,
             "mode": "BGR → Grayscale",
             "size_kb": round(w * h * 3 / 1024, 1),
-        }
+        },
+        "histogram_before": get_histogram(img),
+        "histogram_after": get_histogram(result),
     }
     return {"result": result, "explanation": explanation}
 
@@ -118,6 +150,9 @@ def op_blending(img: np.ndarray, params: dict) -> dict:
         "kernel": None,
         "pixel_before": get_pixel_matrix(img),
         "pixel_after": get_pixel_matrix(result),
+
+        "histogram_before": get_histogram(img),
+        "histogram_after": get_histogram(result),
     }
     return {"result": result, "explanation": explanation}
 
@@ -147,6 +182,9 @@ def op_subtraction(img: np.ndarray, params: dict) -> dict:
         ],
         "pixel_before": get_pixel_matrix(img),
         "pixel_after": get_pixel_matrix(result),
+
+        "histogram_before": get_histogram(img),
+        "histogram_after": get_histogram(result),
     }
     return {"result": result, "explanation": explanation}
 
@@ -175,6 +213,9 @@ def op_rotation(img: np.ndarray, params: dict) -> dict:
         "matrix": M.tolist(),
         "pixel_before": get_pixel_matrix(img),
         "pixel_after": get_pixel_matrix(result),
+
+        "histogram_before": get_histogram(img),
+        "histogram_after": get_histogram(result),
     }
     return {"result": result, "explanation": explanation}
 
@@ -201,6 +242,9 @@ def op_scaling(img: np.ndarray, params: dict) -> dict:
         ],
         "pixel_before": get_pixel_matrix(img),
         "pixel_after": get_pixel_matrix(result),
+
+        "histogram_before": get_histogram(img),
+        "histogram_after": get_histogram(result),
     }
     return {"result": result, "explanation": explanation}
 
@@ -227,6 +271,9 @@ def op_translation(img: np.ndarray, params: dict) -> dict:
         "matrix": M.tolist(),
         "pixel_before": get_pixel_matrix(img),
         "pixel_after": get_pixel_matrix(result),
+
+        "histogram_before": get_histogram(img),
+        "histogram_after": get_histogram(result),
     }
     return {"result": result, "explanation": explanation}
 
@@ -260,6 +307,9 @@ def op_flip(img: np.ndarray, params: dict) -> dict:
         ],
         "pixel_before": get_pixel_matrix(img),
         "pixel_after": get_pixel_matrix(result),
+
+        "histogram_before": get_histogram(img),
+        "histogram_after": get_histogram(result),
     }
     return {"result": result, "explanation": explanation}
 
@@ -285,6 +335,9 @@ def op_brightness(img: np.ndarray, params: dict) -> dict:
         ],
         "pixel_before": get_pixel_matrix(img),
         "pixel_after": get_pixel_matrix(result),
+
+        "histogram_before": get_histogram(img),
+        "histogram_after": get_histogram(result),
     }
     return {"result": result, "explanation": explanation}
 
@@ -313,6 +366,9 @@ def op_contrast(img: np.ndarray, params: dict) -> dict:
         ],
         "pixel_before": get_pixel_matrix(img),
         "pixel_after": get_pixel_matrix(result),
+
+        "histogram_before": get_histogram(img),
+        "histogram_after": get_histogram(result),
     }
     return {"result": result, "explanation": explanation}
 
@@ -336,6 +392,9 @@ def op_negative(img: np.ndarray, params: dict) -> dict:
         ],
         "pixel_before": get_pixel_matrix(img),
         "pixel_after": get_pixel_matrix(result),
+
+        "histogram_before": get_histogram(img),
+        "histogram_after": get_histogram(result),
     }
     return {"result": result, "explanation": explanation}
 
@@ -373,6 +432,9 @@ def op_thresholding(img: np.ndarray, params: dict) -> dict:
         ],
         "pixel_before": get_pixel_matrix(gray),
         "pixel_after": get_pixel_matrix(thresh),
+
+        "histogram_before": get_histogram(img),
+        "histogram_after": get_histogram(result),
     }
     return {"result": result, "explanation": explanation}
 
@@ -410,6 +472,9 @@ def op_mean_filter(img: np.ndarray, params: dict) -> dict:
         ],
         "pixel_before": patch,
         "pixel_after": get_pixel_matrix(result, n=ksize),
+
+        "histogram_before": get_histogram(img),
+        "histogram_after": get_histogram(result),
     }
     return {"result": result, "explanation": explanation}
 
@@ -443,6 +508,9 @@ def op_median_filter(img: np.ndarray, params: dict) -> dict:
         ],
         "pixel_before": patch,
         "pixel_after": get_pixel_matrix(result, n=ksize),
+
+        "histogram_before": get_histogram(img),
+        "histogram_after": get_histogram(result),
     }
     return {"result": result, "explanation": explanation}
 
@@ -496,6 +564,9 @@ def op_sobel(img: np.ndarray, params: dict) -> dict:
         ],
         "pixel_before": patch,
         "pixel_after": get_pixel_matrix(magnitude if len(magnitude.shape) == 2 else cv2.cvtColor(magnitude, cv2.COLOR_BGR2GRAY), n=3),
+
+        "histogram_before": get_histogram(img),
+        "histogram_after": get_histogram(result),
     }
     return {"result": result, "explanation": explanation}
 
@@ -537,7 +608,75 @@ def op_enhance_pipeline(img: np.ndarray, params: dict) -> dict:
         ],
         "pixel_before": get_pixel_matrix(img),
         "pixel_after": get_pixel_matrix(result),
+
+        "histogram_before": get_histogram(img),
+        "histogram_after": get_histogram(result),
     }
+    return {"result": result, "explanation": explanation}
+
+# ─────────────────────────────────────────────────────────────
+# OPERASI 16: Multiplication
+# ─────────────────────────────────────────────────────────────
+def op_multiplication(img: np.ndarray, params: dict) -> dict:
+    b64_second = params.get("second_image", "")
+
+    if b64_second:
+        img2 = decode_image(b64_second)
+        img2 = cv2.resize(img2, (img.shape[1], img.shape[0]))
+    else:
+        img2 = cv2.GaussianBlur(img, (31, 31), 0)
+
+    result = cv2.multiply(img, img2, scale=1/255.0)
+
+    explanation = {
+        "title": "Image Multiplication",
+        "formula": r"g(x,y) = \frac{f_1(x,y) \times f_2(x,y)}{255}",
+        "description": "Mengalikan dua citra. Karena diskalakan (/255), gambar akan cenderung lebih gelap. Sangat berguna untuk efek Masking.",
+        "steps": [
+            "Nilai piksel f1 dikalikan f2.",
+            "Hasilnya dibagi 255 untuk mencegah overflow (keterangan berlebih).",
+            "Piksel hitam (0) pada gambar kedua akan membuat area tersebut jadi hitam total."
+        ],
+        "pixel_before": get_pixel_matrix(img),
+        "pixel_after": get_pixel_matrix(result),
+        "histogram_before": get_histogram(img),
+        "histogram_after": get_histogram(result),
+    }
+
+    return {"result": result, "explanation": explanation}
+
+# ─────────────────────────────────────────────────────────────
+# OPERASI 17: Division
+# ─────────────────────────────────────────────────────────────
+def op_division(img: np.ndarray, params: dict) -> dict:
+    b64_second = params.get("second_image", "")
+
+    if b64_second:
+        img2 = decode_image(b64_second)
+        img2 = cv2.resize(img2, (img.shape[1], img.shape[0]))
+    else:
+        img2 = cv2.GaussianBlur(img, (31, 31), 0)
+
+    img2[img2 == 0] = 1
+
+    result = cv2.divide(img, img2, scale=255.0)
+
+    explanation = {
+        "title": "Image Division",
+        "formula": r"g(x,y) = \frac{f_1(x,y)}{f_2(x,y)} \times 255",
+        "description": "Membagi citra pertama dengan citra kedua. Karena diskalakan (x255), hasilnya akan menerangkan gambar. Sering dipakai untuk perbaikan bayangan (Shading Correction).",
+        "steps": [
+            "Piksel bernilai 0 pada gambar kedua diubah jadi 1 agar tidak error.",
+            "Nilai piksel f1 dibagi f2.",
+            "Hasilnya dikalikan 255 agar kembali ke rentang normal.",
+            "Piksel yang gelap akibat bayangan bisa menjadi normal kembali."
+        ],
+        "pixel_before": get_pixel_matrix(img),
+        "pixel_after": get_pixel_matrix(result),
+        "histogram_before": get_histogram(img),
+        "histogram_after": get_histogram(result),
+    }
+
     return {"result": result, "explanation": explanation}
 
 # ─────────────────────────────────────────────────────────────
@@ -547,6 +686,8 @@ OPERATIONS = {
     "grayscale":        op_grayscale,
     "blending":         op_blending,
     "subtraction":      op_subtraction,
+    "multiply":         op_multiplication,
+    "divide":           op_division,
     "rotation":         op_rotation,
     "scaling":          op_scaling,
     "translation":      op_translation,

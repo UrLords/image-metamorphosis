@@ -11,6 +11,8 @@ export interface Explanation {
   kernel?: number[][] | null;
   pixel_before?: number[][];
   pixel_after?: number[][];
+  histogram_before?: number[];
+  histogram_after?: number[];
   matrix?: number[][];
   image_info?: {
     width: number;
@@ -21,18 +23,17 @@ export interface Explanation {
   pipeline?: Array<{ name: string; beta: number; alpha: number }>;
 }
 
+export interface ProcessRequest {
+  operation: string;
+  image: string;
+  params: Record<string, unknown>;
+}
+
 export interface ProcessResponse {
   before: string;
   after: string;
   explanation: Explanation;
 }
-
-export interface ProcessRequest {
-  operation: string;
-  image: string; // base64 data URL
-  params?: Record<string, unknown>;
-}
-
 // ── POST /api/process ─────────────────────────────────────────
 export async function processImage(
   req: ProcessRequest,

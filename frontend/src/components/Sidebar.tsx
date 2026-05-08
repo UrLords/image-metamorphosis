@@ -27,6 +27,8 @@ const MENU = [
     items: [
       { id: "blending", label: "Image Blending" },
       { id: "subtraction", label: "Background Subtraction" },
+      { id: "multiply", label: "Image Multiplication" },
+      { id: "divide", label: "Image Division" },
     ],
   },
   {

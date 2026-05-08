@@ -10,6 +10,7 @@ import {
   Grid,
   Code2,
   Cpu,
+  BarChart3,
 } from "lucide-react";
 import type { Explanation } from "../api/imageApi";
 
@@ -117,6 +118,77 @@ function KernelMatrix({ data }: { data: number[][] }) {
           ))}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+function HistogramChart({
+  before,
+  after,
+}: {
+  before?: number[];
+  after?: number[];
+}) {
+  const width = 512;
+  const height = 180;
+  const hasBefore = Array.isArray(before) && before.length > 0;
+  const hasAfter = Array.isArray(after) && after.length > 0;
+
+  const createPath = (data: number[]) => {
+    return data
+      .map((v, i) => {
+        const safeValue = Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : 0;
+        const x = (i / Math.max(data.length - 1, 1)) * width;
+        const y = height - safeValue * height;
+
+        return `${i === 0 ? "M" : "L"} ${x} ${y}`;
+      })
+      .join(" ");
+  };
+
+  return (
+    <div className="space-y-4">
+      {hasBefore && (
+        <div>
+          <p className="text-xs text-muted mb-2">Histogram Sebelum</p>
+
+          <svg
+            viewBox={`0 0 ${width} ${height}`}
+            role="img"
+            aria-label="Histogram sebelum proses"
+            className="bg-[#0C1014] rounded-lg border border-border"
+            style={{ width: "100%", height: "auto" }}
+          >
+            <path
+              d={createPath(before)}
+              fill="none"
+              stroke="#60A5FA"
+              strokeWidth="1.5"
+            />
+          </svg>
+        </div>
+      )}
+
+      {hasAfter && (
+        <div>
+          <p className="text-xs text-muted mb-2">Histogram Sesudah</p>
+
+          <svg
+            viewBox={`0 0 ${width} ${height}`}
+            role="img"
+            aria-label="Histogram sesudah proses"
+            className="bg-[#0C1014] rounded-lg border border-border"
+            style={{ width: "100%", height: "auto" }}
+          >
+            <path
+              d={createPath(after)}
+              fill="none"
+              stroke="#34D399"
+              strokeWidth="1.5"
+            />
+          </svg>
+        </div>
+      )}
     </div>
   );
 }
@@ -288,6 +360,15 @@ export default function ExplanationPanel({
               math={`M = \\begin{pmatrix} ${explanation.matrix.map((r) => r.map((v) => (typeof v === "number" ? v.toFixed(3) : v)).join(" & ")).join(" \\\\ ")} \\end{pmatrix}`}
             />
           </div>
+        </SectionCard>
+      )}
+
+      {(explanation.histogram_before || explanation.histogram_after) && (
+        <SectionCard title="Histogram Intensitas" icon={BarChart3}>
+          <HistogramChart
+            before={explanation.histogram_before}
+            after={explanation.histogram_after}
+          />
         </SectionCard>
       )}
     </motion.div>

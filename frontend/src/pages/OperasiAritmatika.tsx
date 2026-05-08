@@ -26,6 +26,7 @@ export function BlendingPage() {
         unit="%"
         onChange={setAlpha}
       />
+
       <div className="text-xs text-muted space-y-0.5 bg-[#0C1014] rounded-lg p-3">
         <p>α = {(alpha / 100).toFixed(2)} → gambar pertama</p>
         <p>1−α = {(1 - alpha / 100).toFixed(2)} → gambar kedua</p>
@@ -53,8 +54,55 @@ export function SubtractionPage() {
   );
 }
 
-// Default export
+// ─────────────────────────────────────────────────────────────
+// Multiply Page
+// ─────────────────────────────────────────────────────────────
+export function MultiplyPage() {
+  return (
+    <PageLayout
+      title="Image Multiplication"
+      subtitle="Mengalikan setiap piksel dari dua gambar untuk menghasilkan efek overlap dan darkening."
+      operation="multiply"
+      getParams={() => ({})}
+      secondImageNeeded={true}
+    >
+      <div className="text-xs text-muted bg-[#0C1014] rounded-lg p-3">
+        <p>Formula:</p>
+        <p>g(x,y) = f₁(x,y) × f₂(x,y)</p>
+      </div>
+    </PageLayout>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// Divide Page
+// ─────────────────────────────────────────────────────────────
+export function DividePage() {
+  return (
+    <PageLayout
+      title="Image Division"
+      subtitle="Membagi setiap piksel gambar pertama dengan gambar kedua."
+      operation="divide"
+      getParams={() => ({})}
+      secondImageNeeded={true}
+    >
+      <div className="text-xs text-muted bg-[#0C1014] rounded-lg p-3">
+        <p>Formula:</p>
+        <p>g(x,y) = f₁(x,y) / f₂(x,y)</p>
+      </div>
+    </PageLayout>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// Router
+// ─────────────────────────────────────────────────────────────
 export default function OperasiAritmatika({ subpage }: { subpage?: string }) {
   if (subpage === "subtraction") return <SubtractionPage />;
+
+  if (subpage === "multiply") return <MultiplyPage />;
+
+  if (subpage === "divide") return <DividePage />;
+
   return <BlendingPage />;
 }

@@ -15,6 +15,8 @@ const OPERATION_PAGE: Record<string, string> = {
   grayscale: "dasar",
   blending: "aritmatika",
   subtraction: "aritmatika",
+  multiply: "aritmatika",
+  divide: "aritmatika",
   rotation: "geometri",
   scaling: "geometri",
   translation: "geometri",
