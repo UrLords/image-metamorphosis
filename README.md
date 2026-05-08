@@ -22,6 +22,7 @@
   - Rumus LaTeX
   - Matriks piksel sample (3×3 / 5×5)
   - Kernel konvolusi
+  - Histogram
   - Langkah perhitungan manual piksel demi piksel
 - **Drag & Drop** upload gambar
 - **Real-time Processing** menggunakan Flask + OpenCV
@@ -50,10 +51,13 @@
 ### Dasar Pengolahan Citra
 - Upload gambar + informasi resolusi
 - Konversi ke Grayscale + visualisasi matriks piksel
+- Visualisasi Histogram 
 
 ### Operasi Aritmatika
 - Image Blending (dengan slider α)
 - Background Subtraction
+- Image Multiplication
+- Image Division
 
 ### Operasi Geometri
 - Rotasi, Scaling, Translasi, Flip (Horizontal/Vertical)
