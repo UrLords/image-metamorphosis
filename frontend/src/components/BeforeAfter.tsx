@@ -1,6 +1,6 @@
 // src/components/BeforeAfter.tsx
 import { motion } from "framer-motion";
-import { ArrowRight, ImageOff } from "lucide-react";
+import { ImageOff } from "lucide-react";
 
 interface BeforeAfterProps {
   before: string | null;
@@ -37,11 +37,6 @@ export default function BeforeAfter({
             </div>
           )}
         </div>
-      </div>
-
-      {/* ── Arrow (hidden on mobile) ── */}
-      <div className="hidden md:flex items-center justify-center absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none">
-        <ArrowRight size={20} className="text-accent opacity-60" />
       </div>
 
       {/* ── After ── */}
