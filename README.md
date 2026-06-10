@@ -1,7 +1,7 @@
 # Image Metamorphosis
 
 **Platform Edukasi Pengolahan Citra Digital Interaktif**  
-*Built for Pengolahan Citra dan Pola (PCP)*
+_Built for Pengolahan Citra dan Pola (PCP)_
 
 ![React](https://img.shields.io/badge/React-18.3-61DAFB?logo=react&logoColor=white)
 ![Flask](https://img.shields.io/badge/Flask-3.0-000000?logo=flask&logoColor=white)
@@ -14,8 +14,10 @@
 ## Tentang Project
 
 **Image Metamorphosis** adalah aplikasi web edukasi pengolahan citra digital yang dirancang untuk memvisualisasikan proses matematis di balik setiap operasi citra. Aplikasi ini tidak hanya menampilkan gambar "Before & After", tetapi juga menjelaskan **rumus matematis**, **matriks piksel**, **kernel**, dan **langkah perhitungan manual**.
+
 ### Fitur Utama
 
+- **Advanced Editor**: Pengolahan citra tingkat lanjut dengan berbagai operasi dalam satu interface terintegrasi.
 - **Interface Modern & Responsif dengan Smooth Animation**
 - **Before & After** comparison yang rapi
 - **Penjelasan Edukasi Lengkap**:
@@ -32,14 +34,16 @@
 ## 🛠️ Tech Stack
 
 ### Frontend
+
 - **React 18** + TypeScript
 - **Vite** The Build Tool
 - **Tailwind CSS** + Custom Design System
 - **Framer Motion**
-- **React KaTeX** 
+- **React KaTeX**
 - **Lucide React**
 
 ### Backend
+
 - **Flask** (Python)
 - **OpenCV** + **NumPy**
 - **Flask-CORS**
@@ -49,38 +53,44 @@
 ## Fitur yang Diimplementasikan
 
 ### Dasar Pengolahan Citra
+
 - Upload gambar + informasi resolusi
 - Konversi ke Grayscale + visualisasi matriks piksel
-- Visualisasi Histogram 
+- Visualisasi Histogram
 
 ### Operasi Aritmatika
+
 - Image Blending (dengan slider α)
 - Background Subtraction
 - Image Multiplication
 - Image Division
 
 ### Operasi Geometri
+
 - Rotasi, Scaling, Translasi, Flip (Horizontal/Vertical)
 
-### Operasi Titik
+### Operasi Titik & Warna
+
 - Brightness Adjustment
 - Contrast Adjustment
 - Negative Image
 - Thresholding (Binary & Otsu)
+- Saturation, Hue Shift, & Opacity
 
 ### Operasi Spasial
+
 - Mean Filter
 - Median Filter
+- Gaussian Blur
+- Sharpness
 - Sobel Edge Detection (dengan penjelasan kernel & konvolusi manual)
-
-### Multi
-- Enhancement Pipeline lengkap (Brightness → Contrast → Sharpening → Denoising)
 
 ---
 
 ## Cara Menjalankan Project
 
 ### Prerequisites
+
 - Python 3.10+
 - Node.js 18+
 - Git
@@ -100,6 +110,7 @@ pip install -r requirements.txt #Ini adalah Instal apa aja yang dibutuhkan
 python app.py
 
 ```
+
 ### 2. Frontend (React)
 
 ```bash
