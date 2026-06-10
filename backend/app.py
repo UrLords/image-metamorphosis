@@ -35,12 +35,19 @@ def encode_image(img: np.ndarray) -> str:
 # ─────────────────────────────────────────────────────────────
 # NOTE: Ambil sample matriks piksel (grayscale) ukuran n×n
 # ─────────────────────────────────────────────────────────────
-def get_pixel_matrix(img: np.ndarray, n: int = 5, start_row: int = 0, start_col: int = 0) -> list:
+def get_pixel_matrix(img: np.ndarray, n: int = 5) -> list:
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if len(img.shape) == 3 else img
+
     h, w = gray.shape
-    r = min(start_row + n, h)
-    c = min(start_col + n, w)
-    patch = gray[start_row:r, start_col:c]
+
+    center_row = max(0, h // 2 - n // 2)
+    center_col = max(0, w // 2 - n // 2)
+
+    patch = gray[
+        center_row:center_row+n,
+        center_col:center_col+n
+    ]
+
     return patch.tolist()
 
 # ─────────────────────────────────────────────────────────────
