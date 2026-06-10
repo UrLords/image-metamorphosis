@@ -1,4 +1,3 @@
-// src/components/Sidebar.tsx
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ImageIcon,
@@ -6,7 +5,7 @@ import {
   RotateCw,
   Dot,
   Filter,
-  BookOpen,
+  Wand2,
   ChevronDown,
   ChevronRight,
 } from "lucide-react";
@@ -51,6 +50,10 @@ const MENU = [
       { id: "contrast", label: "Contrast" },
       { id: "negative", label: "Negative" },
       { id: "thresholding", label: "Thresholding" },
+      { id: "saturation", label: "Saturation" },
+      { id: "hue_shift", label: "Hue Shift" },
+      { id: "opacity", label: "Opacity" },
+      { id: "sharpness", label: "Sharpness" },
     ],
   },
   {
@@ -59,15 +62,16 @@ const MENU = [
     page: "spasial",
     items: [
       { id: "mean_filter", label: "Mean Filter" },
+      { id: "gaussian_blur", label: "Gaussian Blur" },
       { id: "median_filter", label: "Median Filter" },
       { id: "sobel", label: "Sobel Edge Detection" },
     ],
   },
   {
-    section: "Studi Kasus",
-    icon: BookOpen,
-    page: "studi",
-    items: [{ id: "enhance_pipeline", label: "Enhancement Pipeline" }],
+    section: "Advanced Editor",
+    icon: Wand2,
+    page: "editor",
+    items: [{ id: "advanced_editor", label: "Photo Editor" }],
   },
 ];
 
@@ -82,7 +86,6 @@ export default function Sidebar({
   activeOperation,
   onSelectOperation,
 }: SidebarProps) {
-  // Track which section is expanded
   const [expanded, setExpanded] = useState<Record<string, boolean>>(
     Object.fromEntries(MENU.map((m) => [m.section, true])),
   );

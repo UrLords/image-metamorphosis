@@ -1,4 +1,3 @@
-// src/components/ExplanationPanel.tsx
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { InlineMath, BlockMath } from "react-katex";
@@ -332,7 +331,7 @@ export default function ExplanationPanel({
         </SectionCard>
       )}
 
-      {/* Pipeline (Studi Kasus) */}
+      {/* Pipeline */}
       {explanation.pipeline && (
         <SectionCard title="Pipeline Proses" icon={Cpu}>
           <div className="flex flex-wrap gap-2 items-center">

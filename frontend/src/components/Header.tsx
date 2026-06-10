@@ -1,4 +1,3 @@
-// src/components/Header.tsx
 import { Menu, Layers } from "lucide-react";
 
 interface NavItem {
@@ -13,7 +12,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: "geometri", label: "Geometri" },
   { id: "titik", label: "Op. Titik" },
   { id: "spasial", label: "Op. Spasial" },
-  { id: "studi", label: "Studi Kasus" },
+  { id: "editor", label: "Editor" },
 ];
 
 interface HeaderProps {

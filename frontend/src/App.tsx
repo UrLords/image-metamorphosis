@@ -1,4 +1,3 @@
-// src/App.tsx
 import { useState } from "react";
 import Header from "./components/Header";
 import Sidebar from "./components/Sidebar";
@@ -8,7 +7,7 @@ import OperasiAritmatika from "./pages/OperasiAritmatika";
 import Geometri from "./pages/Geometri";
 import OperasiTitik from "./pages/OperasiTitik";
 import OperasiSpasial from "./pages/OperasiSpasial";
-import StudiKasus from "./pages/StudiKasus";
+import AdvancedEditor from "./pages/AdvancedEditor";
 
 // Mapping operasi → page
 const OPERATION_PAGE: Record<string, string> = {
@@ -25,10 +24,15 @@ const OPERATION_PAGE: Record<string, string> = {
   contrast: "titik",
   negative: "titik",
   thresholding: "titik",
+  saturation: "titik",
+  hue_shift: "titik",
+  opacity: "titik",
+  sharpness: "titik",
   mean_filter: "spasial",
+  gaussian_blur: "spasial",
   median_filter: "spasial",
   sobel: "spasial",
-  enhance_pipeline: "studi",
+  advanced_editor: "editor",
 };
 
 export default function App() {
@@ -39,18 +43,17 @@ export default function App() {
     undefined,
   );
 
-  // Navigasi dari Header (nav menu)
+  // nav menu
   const handleNavigate = (page: string) => {
     setActivePage(page);
     setActiveSubpage(undefined);
-    // Set default operation untuk setiap halaman
     const defaults: Record<string, string> = {
       dasar: "grayscale",
       aritmatika: "blending",
       geometri: "rotation",
       titik: "brightness",
       spasial: "mean_filter",
-      studi: "enhance_pipeline",
+      editor: "advanced_editor",
     };
     if (defaults[page]) setActiveOperation(defaults[page]);
   };
@@ -78,8 +81,8 @@ export default function App() {
         return <OperasiTitik subpage={activeSubpage} />;
       case "spasial":
         return <OperasiSpasial subpage={activeSubpage} />;
-      case "studi":
-        return <StudiKasus />;
+      case "editor":
+        return <AdvancedEditor />;
       default:
         return <Home onNavigate={handleNavigate} />;
     }
