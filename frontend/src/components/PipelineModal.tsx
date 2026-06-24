@@ -1,15 +1,17 @@
-// src/components/PipelineModal.tsx
-// Modal edukasi: breakdown pipeline segmentasi CV klasik
-// dipakai oleh Advanced Editor setelah Remove BG / Object Cutout.
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { BlockMath } from "react-katex";
 import "katex/dist/katex.min.css";
 import {
-  X, ChevronDown, ChevronUp, Target, BookOpen, Layers, Percent,
+  X,
+  ChevronDown,
+  ChevronUp,
+  Target,
+  BookOpen,
+  Layers,
+  Percent,
 } from "lucide-react";
 import { HistogramChart } from "./ExplanationPanel";
-import type { HistogramPayload } from "../api/imageApi";
 
 export interface PipelineStage {
   id: string;
@@ -29,8 +31,8 @@ interface PipelineModalProps {
   stages: PipelineStage[];
   coveragePct?: number;
   method?: string;
-  histogramBefore?: HistogramPayload;
-  histogramAfter?: HistogramPayload;
+  histogramBefore?: number[];
+  histogramAfter?: number[];
 }
 
 function StageCard({ stage }: { stage: PipelineStage }) {
@@ -46,28 +48,44 @@ function StageCard({ stage }: { stage: PipelineStage }) {
           <span className="flex-shrink-0 w-7 h-7 rounded-full bg-accent/15 border border-accent/40 text-accent text-xs font-mono font-bold flex items-center justify-center">
             {stage.order}
           </span>
-          <span className="text-sm font-semibold text-white text-left">{stage.title}</span>
+          <span className="text-sm font-semibold text-white text-left">
+            {stage.title}
+          </span>
         </div>
-        {open ? <ChevronUp size={14} className="text-muted flex-shrink-0" /> : <ChevronDown size={14} className="text-muted flex-shrink-0" />}
+        {open ? (
+          <ChevronUp size={14} className="text-muted flex-shrink-0" />
+        ) : (
+          <ChevronDown size={14} className="text-muted flex-shrink-0" />
+        )}
       </button>
 
       <AnimatePresence initial={false}>
         {open && (
           <motion.div
-            initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.2 }} className="overflow-hidden"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="overflow-hidden"
           >
             <div className="px-4 pb-4 pt-1 space-y-3">
               {/* Objective */}
               <div className="flex items-start gap-2">
-                <Target size={13} className="text-accent mt-0.5 flex-shrink-0" />
+                <Target
+                  size={13}
+                  className="text-accent mt-0.5 flex-shrink-0"
+                />
                 <p className="text-xs text-white/80">{stage.objective}</p>
               </div>
 
               {/* Image preview(s) + Formula side by side */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div className="rounded-lg overflow-hidden border border-border bg-[#0C1014] flex items-center justify-center min-h-[140px]">
-                  <img src={stage.image} alt={stage.title} className="max-w-full max-h-48 object-contain" />
+                  <img
+                    src={stage.image}
+                    alt={stage.title}
+                    className="max-w-full max-h-48 object-contain"
+                  />
                 </div>
                 <div className="space-y-2">
                   <div className="bg-[#0C1014] rounded-lg p-3 overflow-x-auto border border-border">
@@ -75,7 +93,11 @@ function StageCard({ stage }: { stage: PipelineStage }) {
                   </div>
                   {stage.secondary_image && (
                     <div className="rounded-lg overflow-hidden border border-border bg-[#0C1014] flex items-center justify-center">
-                      <img src={stage.secondary_image} alt={`${stage.title} secondary`} className="max-w-full max-h-28 object-contain" />
+                      <img
+                        src={stage.secondary_image}
+                        alt={`${stage.title} secondary`}
+                        className="max-w-full max-h-28 object-contain"
+                      />
                     </div>
                   )}
                 </div>
@@ -83,12 +105,19 @@ function StageCard({ stage }: { stage: PipelineStage }) {
 
               {/* Math concept */}
               <div className="flex items-start gap-2 bg-accent/5 border border-accent/20 rounded-lg p-3">
-                <BookOpen size={13} className="text-accent mt-0.5 flex-shrink-0" />
-                <p className="text-xs text-muted leading-relaxed">{stage.math_concept}</p>
+                <BookOpen
+                  size={13}
+                  className="text-accent mt-0.5 flex-shrink-0"
+                />
+                <p className="text-xs text-muted leading-relaxed">
+                  {stage.math_concept}
+                </p>
               </div>
 
               {/* Description / params */}
-              <p className="text-[11px] text-muted/70 font-mono px-1">{stage.description}</p>
+              <p className="text-[11px] text-muted/70 font-mono px-1">
+                {stage.description}
+              </p>
             </div>
           </motion.div>
         )}
@@ -98,14 +127,22 @@ function StageCard({ stage }: { stage: PipelineStage }) {
 }
 
 export default function PipelineModal({
-  open, onClose, stages, coveragePct, method, histogramBefore, histogramAfter,
+  open,
+  onClose,
+  stages,
+  coveragePct,
+  method,
+  histogramBefore,
+  histogramAfter,
 }: PipelineModalProps) {
   return (
     <AnimatePresence>
       {open && (
         <motion.div
           key="pipeline-modal-backdrop"
-          initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
           className="fixed inset-0 z-[60] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
           onClick={onClose}
         >
@@ -123,10 +160,16 @@ export default function PipelineModal({
               <div className="flex items-center gap-2.5">
                 <Layers size={18} className="text-accent" />
                 <div>
-                  <h3 className="text-base font-bold text-white" style={{ fontFamily: "'Playfair Display',serif" }}>
+                  <h3
+                    className="text-base font-bold text-white"
+                    style={{ fontFamily: "'Playfair Display',serif" }}
+                  >
                     Pipeline Breakdown
                   </h3>
-                  <p className="text-[11px] text-muted">{method ?? "OpenCV Processing Pipeline"} - {stages.length} tahap</p>
+                  <p className="text-[11px] text-muted">
+                    {method ?? "Classical CV Segmentation Pipeline"} ·{" "}
+                    {stages.length} tahap
+                  </p>
                 </div>
               </div>
               <div className="flex items-center gap-2">
@@ -135,26 +178,40 @@ export default function PipelineModal({
                     <Percent size={11} /> {coveragePct}% foreground
                   </span>
                 )}
-                <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-white/10 transition-colors">
+                <button
+                  onClick={onClose}
+                  className="p-1.5 rounded-lg hover:bg-white/10 transition-colors"
+                >
                   <X size={16} className="text-muted hover:text-white" />
                 </button>
               </div>
             </div>
 
-            {/* Body - scrollable */}
+            {/* Body — scrollable */}
             <div className="overflow-y-auto px-5 py-4 space-y-3 flex-1">
               <p className="text-xs text-muted leading-relaxed pb-1">
-                Sistem ini memakai pipeline OpenCV klasik untuk memperlihatkan proses pengolahan citra tahap demi tahap. Klik tiap tahap untuk melihat formula, konsep matematis, dan hasil antara.
+                Sistem penghapusan background tidak hanya mengandalkan satu
+                algoritma — melainkan kombinasi{" "}
+                <strong className="text-white">9 tahap</strong> pengolahan citra
+                klasik, dari reduksi noise hingga anti-aliasing tepi. Klik tiap
+                tahap untuk melihat formula, konsep matematis, dan hasil antara.
               </p>
 
-              {[...stages].sort((a, b) => a.order - b.order).map((s) => (
-                <StageCard key={s.id} stage={s} />
-              ))}
+              {[...stages]
+                .sort((a, b) => a.order - b.order)
+                .map((s) => (
+                  <StageCard key={s.id} stage={s} />
+                ))}
 
-              {(histogramBefore || histogramAfter) ? (
+              {histogramBefore?.length || histogramAfter?.length ? (
                 <div className="rounded-xl border border-border bg-card p-4 mt-4">
-                  <p className="text-sm font-semibold text-white mb-3">Histogram RGB dan Luminance: Asli vs Hasil</p>
-                  <HistogramChart before={histogramBefore} after={histogramAfter} />
+                  <p className="text-sm font-semibold text-white mb-3">
+                    Distribusi Intensitas: Asli vs Foreground Hasil
+                  </p>
+                  <HistogramChart
+                    before={histogramBefore}
+                    after={histogramAfter}
+                  />
                 </div>
               ) : null}
             </div>
@@ -164,4 +221,3 @@ export default function PipelineModal({
     </AnimatePresence>
   );
 }
-
