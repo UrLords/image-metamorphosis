@@ -1,4 +1,3 @@
-// src/components/PageLayout.tsx
 import { motion } from "framer-motion";
 import { useState } from "react";
 import ImageUploader from "./ImageUploader";
@@ -12,7 +11,7 @@ interface PageLayoutProps {
   subtitle: string;
   operation: string;
   getParams: () => Record<string, unknown>;
-  children: React.ReactNode; // slider controls
+  children: React.ReactNode;
   secondImageNeeded?: boolean;
 }
 

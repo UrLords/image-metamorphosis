@@ -1,4 +1,3 @@
-// src/components/BeforeAfter.tsx
 import { motion } from "framer-motion";
 import { ImageOff } from "lucide-react";
 
@@ -15,7 +14,7 @@ export default function BeforeAfter({
 }: BeforeAfterProps) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full">
-      {/* ── Before ── */}
+      {/* Before */}
       <div className="flex flex-col gap-2">
         <div className="flex items-center gap-2">
           <div className="w-2 h-2 rounded-full bg-muted"></div>
@@ -39,7 +38,7 @@ export default function BeforeAfter({
         </div>
       </div>
 
-      {/* ── After ── */}
+      {/* After */}
       <div className="flex flex-col gap-2">
         <div className="flex items-center gap-2">
           <div className="w-2 h-2 rounded-full bg-accent"></div>

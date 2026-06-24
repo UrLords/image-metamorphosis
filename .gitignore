@@ -1,19 +1,109 @@
-# Python
-venv/
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-
-# Node/React
-node_modules/
-dist/
-build/
-
-# OS/Editor
+# Operating system files
 .DS_Store
 Thumbs.db
-*.log
+Desktop.ini
 
-# Environment/Sensitive
+# Editor and IDE files
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.example.json
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Environment variables and secrets
 .env
+.env.*
+!.env.example
+*.local
+*.pem
+*.key
+*service-account*.json
+firebase-service-account*.json
+google-application-credentials*.json
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+*.pyd
+.Python
+
+# Python virtual environments
+venv/
+.venv/
+env/
+ENV/
+backend/venv/
+backend/.venv/
+
+# Python build and package artifacts
+build/
+dist/
+downloads/
+eggs/
+.eggs/
+*.egg-info/
+*.egg
+pip-wheel-metadata/
+wheelhouse/
+
+# Python tooling cache
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# Flask/runtime files
+instance/
+.webassets-cache/
+uploads/
+tmp/
+temp/
+
+# Node / Vite / React
+node_modules/
+frontend/node_modules/
+frontend/dist/
+frontend/build/
+frontend/.vite/
+.vite/
+
+# TypeScript / build cache
+*.tsbuildinfo
+
+# Deployment tooling
+.vercel/
+.netlify/
+
+# Package manager cache
+.npm/
+.pnpm-store/
+.yarn/cache/
+.yarn/unplugged/
+.yarn/build-state.yml
+.yarn/install-state.gz
+
+# Test and coverage output
+coverage/
+playwright-report/
+test-results/
+
+# Archive and backup files
+*.zip
+*.tar
+*.tar.gz
+*.rar
+*.7z
+*.bak
+*.backup

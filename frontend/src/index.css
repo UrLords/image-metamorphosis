@@ -2,7 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ── Base ─────────────────────────────────────────── */
+/* Base */
 * {
   box-sizing: border-box;
 }
@@ -14,7 +14,7 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* ── Scrollbar ────────────────────────────────────── */
+/* Scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -30,7 +30,7 @@ body {
   background: #948979;
 }
 
-/* ── KaTeX override ───────────────────────────────── */
+/* KaTeX override */
 .katex {
   font-size: 1.05em !important;
   color: #c9a86c !important;
@@ -39,7 +39,7 @@ body {
   overflow-x: auto;
 }
 
-/* ── Pixel matrix table ───────────────────────────── */
+/* Pixel matrix table */
 .pixel-matrix td {
   width: 36px;
   height: 36px;
@@ -51,7 +51,7 @@ body {
   color: #dfd0b8;
 }
 
-/* ── Kernel table ─────────────────────────────────── */
+/* Kernel table */
 .kernel-matrix td {
   width: 44px;
   height: 44px;
@@ -64,13 +64,13 @@ body {
   font-weight: 600;
 }
 
-/* ── Drag-drop zone ───────────────────────────────── */
+/* Drag-drop zone */
 .dropzone-active {
   border-color: #c9a86c !important;
   background-color: rgba(201, 168, 108, 0.05) !important;
 }
 
-/* ── Image comparison slider ─────────────────────── */
+/* Image comparison slider */
 .compare-container {
   position: relative;
   overflow: hidden;
@@ -85,7 +85,7 @@ body {
   z-index: 10;
 }
 .compare-divider::before {
-  content: "◀ ▶";
+  content: "< >";
   position: absolute;
   top: 50%;
   left: 50%;
@@ -98,7 +98,7 @@ body {
   white-space: nowrap;
 }
 
-/* ── Step badge ───────────────────────────────────── */
+/* Step badge */
 .step-badge {
   display: inline-flex;
   align-items: center;

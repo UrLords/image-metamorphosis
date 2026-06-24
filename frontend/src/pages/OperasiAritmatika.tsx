@@ -1,24 +1,21 @@
-// src/pages/OperasiAritmatika.tsx
 import { useState } from "react";
 import PageLayout from "../components/PageLayout";
 import { Slider } from "../components/Controls";
 
-// ─────────────────────────────────────────────────────────────
-// Blending Page
-// ─────────────────────────────────────────────────────────────
+// Blending
 export function BlendingPage() {
   const [alpha, setAlpha] = useState(50);
 
   return (
     <PageLayout
       title="Image Blending"
-      subtitle="Menggabungkan dua gambar dengan bobot α dan (1-α). Upload gambar kedua atau biarkan kosong untuk blend dengan blur."
+      subtitle="Menggabungkan dua gambar dengan bobot alpha dan (1 - alpha). Upload gambar kedua atau biarkan kosong untuk blend dengan blur."
       operation="blending"
       getParams={() => ({ alpha: alpha / 100 })}
       secondImageNeeded={true}
     >
       <Slider
-        label="Alpha (α)"
+        label="Alpha"
         value={alpha}
         min={0}
         max={100}
@@ -28,16 +25,14 @@ export function BlendingPage() {
       />
 
       <div className="text-xs text-muted space-y-0.5 bg-[#0C1014] rounded-lg p-3">
-        <p>α = {(alpha / 100).toFixed(2)} → gambar pertama</p>
-        <p>1−α = {(1 - alpha / 100).toFixed(2)} → gambar kedua</p>
+        <p>alpha = {(alpha / 100).toFixed(2)} untuk gambar pertama</p>
+        <p>1 - alpha = {(1 - alpha / 100).toFixed(2)} untuk gambar kedua</p>
       </div>
     </PageLayout>
   );
 }
 
-// ─────────────────────────────────────────────────────────────
-// Subtraction Page
-// ─────────────────────────────────────────────────────────────
+// Background subtraction
 export function SubtractionPage() {
   return (
     <PageLayout
@@ -47,16 +42,14 @@ export function SubtractionPage() {
       getParams={() => ({})}
     >
       <p className="text-xs text-muted">
-        Background dihitung otomatis menggunakan Gaussian Blur 51×51 yang sangat
+        Background dihitung otomatis menggunakan Gaussian Blur 51x51 yang sangat
         smooth.
       </p>
     </PageLayout>
   );
 }
 
-// ─────────────────────────────────────────────────────────────
-// Multiply Page
-// ─────────────────────────────────────────────────────────────
+// Multiplication
 export function MultiplyPage() {
   return (
     <PageLayout
@@ -68,15 +61,13 @@ export function MultiplyPage() {
     >
       <div className="text-xs text-muted bg-[#0C1014] rounded-lg p-3">
         <p>Formula:</p>
-        <p>g(x,y) = f₁(x,y) × f₂(x,y)</p>
+        <p>g(x,y) = f1(x,y) x f2(x,y)</p>
       </div>
     </PageLayout>
   );
 }
 
-// ─────────────────────────────────────────────────────────────
-// Divide Page
-// ─────────────────────────────────────────────────────────────
+// Division
 export function DividePage() {
   return (
     <PageLayout
@@ -88,15 +79,13 @@ export function DividePage() {
     >
       <div className="text-xs text-muted bg-[#0C1014] rounded-lg p-3">
         <p>Formula:</p>
-        <p>g(x,y) = f₁(x,y) / f₂(x,y)</p>
+        <p>g(x,y) = f1(x,y) / f2(x,y)</p>
       </div>
     </PageLayout>
   );
 }
 
-// ─────────────────────────────────────────────────────────────
 // Router
-// ─────────────────────────────────────────────────────────────
 export default function OperasiAritmatika({ subpage }: { subpage?: string }) {
   if (subpage === "subtraction") return <SubtractionPage />;
 

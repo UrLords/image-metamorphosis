@@ -2,18 +2,18 @@ import { useState } from "react";
 import PageLayout from "../components/PageLayout";
 import { Slider, Select } from "../components/Controls";
 
-// ── Brightness ──────────────────────────────────────
 export function BrightnessPage() {
   const [beta, setBeta] = useState(50);
+
   return (
     <PageLayout
       title="Brightness (Kecerahan)"
-      subtitle="Tambahkan atau kurangi nilai konstan β pada setiap piksel."
+      subtitle="Menambah atau mengurangi nilai konstan beta pada setiap piksel."
       operation="brightness"
       getParams={() => ({ beta })}
     >
       <Slider
-        label="Beta (β)"
+        label="Beta"
         value={beta}
         min={-100}
         max={100}
@@ -21,24 +21,25 @@ export function BrightnessPage() {
         onChange={setBeta}
       />
       <p className="text-xs text-muted">
-        β positif = lebih terang · β negatif = lebih gelap
+        Beta positif membuat gambar lebih terang, beta negatif membuat gambar
+        lebih gelap.
       </p>
     </PageLayout>
   );
 }
 
-// ── Contrast ────────────────────────────────────────
 export function ContrastPage() {
   const [alpha, setAlpha] = useState(150);
+
   return (
     <PageLayout
       title="Contrast (Kontras)"
-      subtitle="Kalikan setiap piksel dengan faktor α untuk mengontrol rentang dinamis."
+      subtitle="Mengalikan setiap piksel dengan faktor alpha untuk mengatur rentang dinamis."
       operation="contrast"
       getParams={() => ({ alpha: alpha / 100 })}
     >
       <Slider
-        label="Alpha (α)"
+        label="Alpha"
         value={alpha}
         min={50}
         max={300}
@@ -46,42 +47,43 @@ export function ContrastPage() {
         unit="%"
         onChange={setAlpha}
       />
-      <div className="text-xs text-muted bg-[#0C1014] rounded-lg p-3">
-        <p>α = {(alpha / 100).toFixed(2)}</p>
+      <div className="rounded-lg bg-[#0C1014] p-3 text-xs text-muted">
+        <p>alpha = {(alpha / 100).toFixed(2)}</p>
         <p>
           {alpha > 100
-            ? "↑ Kontras meningkat"
+            ? "Kontras meningkat"
             : alpha < 100
-              ? "↓ Kontras menurun"
-              : "= Tidak berubah"}
+              ? "Kontras menurun"
+              : "Tidak berubah"}
         </p>
       </div>
     </PageLayout>
   );
 }
 
-// ── Negative ────────────────────────────────────────
 export function NegativePage() {
   return (
     <PageLayout
       title="Citra Negatif"
-      subtitle="Inversi semua nilai piksel: g(x,y) = 255 − f(x,y)."
+      subtitle="Inversi semua nilai piksel: g(x,y) = 255 - f(x,y)."
       operation="negative"
       getParams={() => ({})}
     >
-      <p className="text-xs text-muted">Tidak ada parameter. Klik proses.</p>
+      <p className="text-xs text-muted">
+        Tidak ada parameter. Klik proses untuk melihat hasil inversi.
+      </p>
     </PageLayout>
   );
 }
 
-// ── Thresholding ────────────────────────────────────
 export function ThresholdingPage() {
   const [threshold, setThreshold] = useState(128);
   const [mode, setMode] = useState("binary");
+
   return (
     <PageLayout
       title="Thresholding (Binarisasi)"
-      subtitle="Konversi gambar ke biner (hitam-putih) menggunakan ambang batas T."
+      subtitle="Memisahkan piksel menjadi hitam-putih berdasarkan ambang batas T."
       operation="thresholding"
       getParams={() => ({ threshold, mode })}
     >
@@ -89,9 +91,9 @@ export function ThresholdingPage() {
         label="Mode"
         value={mode}
         options={[
-          { value: "binary", label: "Binary (≥T → putih)" },
-          { value: "binary_inv", label: "Binary Inv (≥T → hitam)" },
-          { value: "otsu", label: "Otsu (T otomatis)" },
+          { value: "binary", label: "Binary: >= T menjadi putih" },
+          { value: "binary_inv", label: "Binary Inv: >= T menjadi hitam" },
+          { value: "otsu", label: "Otsu: T otomatis" },
         ]}
         onChange={setMode}
       />
@@ -107,20 +109,21 @@ export function ThresholdingPage() {
       )}
       {mode === "otsu" && (
         <p className="text-xs text-accent">
-          Otsu menghitung T optimal via variance antar kelas.
+          Otsu mencari threshold optimal dari histogram intensitas.
         </p>
       )}
     </PageLayout>
   );
 }
 
-// ── Saturation ────────────────────────────────
 export function SaturationPage() {
   const [sat, setSat] = useState(50);
+  const scale = 1 + sat / 100;
+
   return (
     <PageLayout
       title="Saturation (Kejenuhan Warna)"
-      subtitle="Ubah intensitas warna via ruang HSV. +100 = vivid, -100 = grayscale."
+      subtitle="Mengatur kekuatan warna dengan memodifikasi channel S pada ruang warna HSV."
       operation="saturation"
       getParams={() => ({ saturation: sat })}
     >
@@ -130,81 +133,74 @@ export function SaturationPage() {
         min={-100}
         max={100}
         step={5}
+        unit="%"
         onChange={setSat}
       />
-      <div className="text-xs text-muted bg-[#0C1014] rounded-lg p-3 space-y-1">
+      <div className="space-y-1 rounded-lg bg-[#0C1014] p-3 text-xs text-muted">
+        <p>scale = 1 + saturation/100 = {scale.toFixed(2)}</p>
         <p>
-          scale = 1 + {sat}/100 = {(1 + sat / 100).toFixed(2)}
-        </p>
-        <p>
-          {sat > 0
-            ? "🎨 Warna lebih jenuh/vivid"
-            : sat < 0
-              ? "🩶 Warna memudar ke grayscale"
-              : "= Tidak berubah"}
+          S lebih besar membuat warna lebih vivid. S lebih kecil membuat warna
+          mendekati grayscale.
         </p>
         <p className="text-accent/70">
-          Proses: BGR → HSV → S × scale → HSV → BGR
+          Proses: BGR ke HSV, ubah S, lalu kembali ke BGR.
         </p>
       </div>
     </PageLayout>
   );
 }
 
-// ── Hue Shift ─────────────────────────────────
 export function HuePage() {
   const [hue, setHue] = useState(60);
+
   return (
     <PageLayout
       title="Hue Shift (Pergeseran Warna)"
-      subtitle="Putar roda warna: merah→kuning→hijau→biru→ungu→merah."
+      subtitle="Memutar warna pada roda hue tanpa mengubah kecerahan utama gambar."
       operation="hue_shift"
       getParams={() => ({ hue })}
     >
       <Slider
-        label="Hue Shift (°)"
+        label="Hue Shift"
         value={hue}
         min={-180}
         max={180}
         step={10}
-        unit="°"
+        unit="deg"
         onChange={setHue}
       />
-      <div className="text-xs text-muted bg-[#0C1014] rounded-lg p-3 space-y-1">
+      <div className="space-y-1 rounded-lg bg-[#0C1014] p-3 text-xs text-muted">
         <p>
-          Δh = {hue}° → OpenCV skala ½ = {Math.floor(hue / 2)}
+          Delta h = {hue} deg. OpenCV menyimpan hue pada skala 0-180, jadi
+          pergeseran internal = {Math.floor(hue / 2)}.
         </p>
-        <p>0° = tidak berubah · ±180° = warna terbalik</p>
-        <div className="flex gap-1 mt-2 flex-wrap">
-          {["🔴 0°", "🟠 30°", "🟡 60°", "🟢 120°", "🔵 180°", "🟣 240°"].map(
-            (c) => (
-              <span
-                key={c}
-                className="text-xs px-2 py-0.5 rounded bg-white/5 text-muted"
-              >
-                {c}
-              </span>
-            ),
-          )}
-        </div>
+        <p>
+          0 deg tidak berubah. Pergeseran positif/negatif memutar seluruh warna
+          pada roda hue.
+        </p>
+        <p className="text-accent/70">
+          Contoh: merah bisa bergeser menuju kuning, hijau, biru, lalu kembali
+          ke merah.
+        </p>
       </div>
     </PageLayout>
   );
 }
 
-// ── Opacity ───────────────────────────────────
 export function OpacityPage() {
   const [opacity, setOpacity] = useState(60);
   const [bg, setBg] = useState("white");
+  const alpha = opacity / 100;
+
   return (
     <PageLayout
       title="Opacity (Transparansi)"
-      subtitle="Blend gambar dengan background solid. Simulasi transparansi tanpa alpha channel."
+      subtitle="Mencampur gambar dengan background solid untuk mensimulasikan transparansi."
       operation="opacity"
       getParams={() => ({ opacity, bg_color: bg })}
     >
       <Slider
-        label="Opacity (%)"
+        label="Opacity"
         value={opacity}
         min={0}
         max={100}
@@ -216,33 +212,29 @@ export function OpacityPage() {
         label="Warna Background"
         value={bg}
         options={[
-          { value: "white", label: "Putih (cocok untuk kertas)" },
-          { value: "black", label: "Hitam (cocok untuk layar)" },
+          { value: "white", label: "Putih" },
+          { value: "black", label: "Hitam" },
         ]}
         onChange={setBg}
       />
-      <div className="text-xs text-muted bg-[#0C1014] rounded-lg p-3">
-        <p>
-          α = {opacity}/100 = {(opacity / 100).toFixed(2)}
-        </p>
-        <p>
-          g = {(opacity / 100).toFixed(2)}×f + {(1 - opacity / 100).toFixed(2)}
-          ×B
-        </p>
+      <div className="rounded-lg bg-[#0C1014] p-3 text-xs text-muted">
+        <p>alpha = {alpha.toFixed(2)}</p>
+        <p>g = alpha x f + (1 - alpha) x background</p>
       </div>
     </PageLayout>
   );
 }
 
-// ── Sharpness ─────────────────────────────────
 export function SharpnessPage() {
   const [amount, setAmount] = useState(100);
+  const a = amount / 100;
+
   return (
     <PageLayout
-      title="Sharpness (Ketajaman) — Unsharp Masking"
-      subtitle="Pertegas detail gambar dengan menambah kembali detail mask ke gambar asli."
+      title="Sharpness (Ketajaman) - Unsharp Masking"
+      subtitle="Mempertegas detail dengan menambahkan kembali detail mask ke gambar asli."
       operation="sharpness"
-      getParams={() => ({ amount: amount / 100 })}
+      getParams={() => ({ amount: a })}
     >
       <Slider
         label="Amount"
@@ -253,18 +245,18 @@ export function SharpnessPage() {
         unit="%"
         onChange={setAmount}
       />
-      <div className="text-xs text-muted bg-[#0C1014] rounded-lg p-3 space-y-1">
-        <p>a = {(amount / 100).toFixed(2)}</p>
-        <p>g = f + {(amount / 100).toFixed(2)} × (f − GaussianBlur(f))</p>
+      <div className="space-y-1 rounded-lg bg-[#0C1014] p-3 text-xs text-muted">
+        <p>a = {a.toFixed(2)}</p>
+        <p>g = f + a x (f - GaussianBlur(f))</p>
         <p className="text-accent/70">
-          Semakin besar amount, semakin tajam (dan berisik).
+          Semakin besar amount, detail makin tajam tetapi noise juga bisa ikut
+          menguat.
         </p>
       </div>
     </PageLayout>
   );
 }
 
-// ── Default Router ───────────────────────────────────
 export default function OperasiTitik({ subpage }: { subpage?: string }) {
   switch (subpage) {
     case "contrast":

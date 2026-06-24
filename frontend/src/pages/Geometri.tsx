@@ -1,9 +1,8 @@
-// src/pages/Geometri.tsx
 import { useState } from "react";
 import PageLayout from "../components/PageLayout";
 import { Slider, Select } from "../components/Controls";
 
-// ── Rotasi ──────────────────────────────────────────────────
+// Rotation
 export function RotasiPage() {
   const [angle, setAngle] = useState(45);
   return (
@@ -19,14 +18,14 @@ export function RotasiPage() {
         min={-180}
         max={180}
         step={5}
-        unit="°"
+        unit=" deg"
         onChange={setAngle}
       />
     </PageLayout>
   );
 }
 
-// ── Scaling ─────────────────────────────────────────────────
+// Scaling
 export function ScalingPage() {
   const [sx, setSx] = useState(150);
   const [sy, setSy] = useState(150);
@@ -59,7 +58,7 @@ export function ScalingPage() {
   );
 }
 
-// ── Translasi ────────────────────────────────────────────────
+// Translation
 export function TranslasiPage() {
   const [tx, setTx] = useState(50);
   const [ty, setTy] = useState(50);
@@ -92,7 +91,7 @@ export function TranslasiPage() {
   );
 }
 
-// ── Flip ─────────────────────────────────────────────────────
+// Flip
 export function FlipPage() {
   const [mode, setMode] = useState("horizontal");
   return (
@@ -116,7 +115,7 @@ export function FlipPage() {
   );
 }
 
-// ── Default export ────────────────────────────────────────────
+// Router
 export default function Geometri({ subpage }: { subpage?: string }) {
   switch (subpage) {
     case "scaling":

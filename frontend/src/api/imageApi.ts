@@ -1,9 +1,13 @@
-// src/api/imageApi.ts
-import axios from "axios";
+import apiClient from "./axiosClient";
 
-const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || "/api",
-});
+export interface HistogramData {
+  red: number[];
+  green: number[];
+  blue: number[];
+  luminance: number[];
+}
+
+export type HistogramPayload = HistogramData | number[];
 
 export interface Explanation {
   title: string;
@@ -13,8 +17,8 @@ export interface Explanation {
   kernel?: number[][] | null;
   pixel_before?: number[][];
   pixel_after?: number[][];
-  histogram_before?: number[];
-  histogram_after?: number[];
+  histogram_before?: HistogramPayload;
+  histogram_after?: HistogramPayload;
   matrix?: number[][];
   image_info?: {
     width: number;
@@ -23,6 +27,7 @@ export interface Explanation {
     size_kb: number;
   };
   pipeline?: Array<{ name: string; beta: number; alpha: number }>;
+  code_snippet?: string;
 }
 
 export interface ProcessRequest {
@@ -36,18 +41,15 @@ export interface ProcessResponse {
   after: string;
   explanation: Explanation;
 }
-// ── POST /api/process ─────────────────────────────────────────
-export async function processImage(
-  req: ProcessRequest,
-): Promise<ProcessResponse> {
-  const res = await api.post<ProcessResponse>("/process", req);
+
+export async function processImage(req: ProcessRequest): Promise<ProcessResponse> {
+  const res = await apiClient.post<ProcessResponse>("/process", req);
   return res.data;
 }
 
-// ── GET /api/health ───────────────────────────────────────────
 export async function healthCheck(): Promise<boolean> {
   try {
-    await api.get("/health");
+    await apiClient.get("/health");
     return true;
   } catch {
     return false;

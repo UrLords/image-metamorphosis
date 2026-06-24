@@ -6,23 +6,21 @@ import {
   Dot,
   Filter,
   Wand2,
+  ScanLine,
   ChevronDown,
   ChevronRight,
 } from "lucide-react";
 import { useState } from "react";
 
-// ── Data Sidebar ──────────────────────────────────────────────
 const MENU = [
   {
     section: "Dasar Citra",
     icon: ImageIcon,
-    page: "dasar",
     items: [{ id: "grayscale", label: "Konversi Grayscale" }],
   },
   {
     section: "Operasi Aritmatika",
     icon: Plus,
-    page: "aritmatika",
     items: [
       { id: "blending", label: "Image Blending" },
       { id: "subtraction", label: "Background Subtraction" },
@@ -33,7 +31,6 @@ const MENU = [
   {
     section: "Geometri",
     icon: RotateCw,
-    page: "geometri",
     items: [
       { id: "rotation", label: "Rotasi" },
       { id: "scaling", label: "Scaling" },
@@ -44,12 +41,10 @@ const MENU = [
   {
     section: "Operasi Titik",
     icon: Dot,
-    page: "titik",
     items: [
       { id: "brightness", label: "Brightness" },
       { id: "contrast", label: "Contrast" },
       { id: "negative", label: "Negative" },
-      { id: "thresholding", label: "Thresholding" },
       { id: "saturation", label: "Saturation" },
       { id: "hue_shift", label: "Hue Shift" },
       { id: "opacity", label: "Opacity" },
@@ -59,18 +54,41 @@ const MENU = [
   {
     section: "Operasi Spasial",
     icon: Filter,
-    page: "spasial",
     items: [
       { id: "mean_filter", label: "Mean Filter" },
       { id: "gaussian_blur", label: "Gaussian Blur" },
       { id: "median_filter", label: "Median Filter" },
-      { id: "sobel", label: "Sobel Edge Detection" },
     ],
+  },
+  {
+    section: "Morfologi Citra",
+    icon: ImageIcon,
+    items: [
+      { id: "morphology", label: "Morphology" },
+      { id: "zhang_suen", label: "Thinning Zhang-Suen" },
+    ],
+  },
+  {
+    section: "Deteksi Tepi",
+    icon: Filter,
+    items: [
+      { id: "sobel", label: "Sobel Edge Detection" },
+      { id: "edge_detection", label: "Edge Detection" },
+    ],
+  },
+  {
+    section: "Segmentasi Citra",
+    icon: Dot,
+    items: [{ id: "segmentation", label: "Segmentasi Citra" }],
+  },
+  {
+    section: "Scan Dokumen",
+    icon: ScanLine,
+    items: [{ id: "scan_document", label: "Scan & Restore" }],
   },
   {
     section: "Advanced Editor",
     icon: Wand2,
-    page: "editor",
     items: [{ id: "advanced_editor", label: "Photo Editor" }],
   },
 ];
@@ -102,7 +120,7 @@ export default function Sidebar({
           animate={{ x: 0, opacity: 1 }}
           exit={{ x: -280, opacity: 0 }}
           transition={{ type: "spring", stiffness: 300, damping: 30 }}
-          className="fixed left-0 top-14 bottom-0 z-40 w-64 overflow-y-auto py-4 flex flex-col"
+          className="fixed bottom-0 left-0 top-14 z-40 flex w-64 flex-col overflow-y-auto py-4"
           style={{
             backgroundColor: "#948979",
             boxShadow: "4px 0 24px rgba(0,0,0,0.4)",
@@ -114,17 +132,14 @@ export default function Sidebar({
 
             return (
               <div key={group.section} className="mb-1">
-                {/* Section header */}
                 <button
+                  type="button"
                   onClick={() => toggle(group.section)}
-                  className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-black/10 transition-colors"
+                  className="flex w-full items-center justify-between px-4 py-2.5 transition-colors hover:bg-black/10"
                 >
                   <div className="flex items-center gap-2.5">
-                    <Icon size={15} className="text-black/70 flex-shrink-0" />
-                    <span
-                      className="text-black font-semibold text-xs uppercase tracking-wider"
-                      style={{ fontFamily: "'DM Sans', sans-serif" }}
-                    >
+                    <Icon size={15} className="flex-shrink-0 text-black/70" />
+                    <span className="text-xs font-semibold uppercase tracking-wider text-black">
                       {group.section}
                     </span>
                   </div>
@@ -135,7 +150,6 @@ export default function Sidebar({
                   )}
                 </button>
 
-                {/* Items */}
                 <AnimatePresence initial={false}>
                   {isExpanded && (
                     <motion.div
@@ -150,15 +164,13 @@ export default function Sidebar({
                         return (
                           <button
                             key={item.id}
+                            type="button"
                             onClick={() => onSelectOperation(item.id)}
-                            className={`
-                              w-full text-left pl-10 pr-4 py-2 text-sm transition-all
-                              ${
-                                isActive
-                                  ? "bg-[#0C1014] text-[#C9A86C] font-medium border-r-2 border-[#C9A86C]"
-                                  : "text-black/80 hover:bg-black/15 hover:text-black"
-                              }
-                            `}
+                            className={`w-full py-2 pl-10 pr-4 text-left text-sm transition-all ${
+                              isActive
+                                ? "border-r-2 border-[#C9A86C] bg-[#0C1014] font-medium text-[#C9A86C]"
+                                : "text-black/80 hover:bg-black/15 hover:text-black"
+                            }`}
                           >
                             {item.label}
                           </button>
@@ -171,10 +183,9 @@ export default function Sidebar({
             );
           })}
 
-          {/* Footer */}
-          <div className="mt-auto px-4 py-3 border-t border-black/20">
-            <p className="text-black/50 text-xs font-mono">
-              v1.0.0 · OpenCV + React
+          <div className="mt-auto border-t border-black/20 px-4 py-3">
+            <p className="font-mono text-xs text-black/50">
+              v1.0.0 - OpenCV + React
             </p>
           </div>
         </motion.aside>

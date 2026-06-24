@@ -1,5 +1,5 @@
-import { motion } from "framer-motion";
-import { Cpu, Layers, Wand2, Zap } from "lucide-react";
+﻿import { motion } from "framer-motion";
+import { Cpu, Layers, ScanLine, Wand2, Zap, Filter, Dot } from "lucide-react";
 
 const FEATURES = [
   {
@@ -15,12 +15,32 @@ const FEATURES = [
   {
     icon: Cpu,
     title: "Operasi Spasial",
-    desc: "Mean filter, Gaussian blur, median filter, dan Sobel edge detection lengkap dengan kernel.",
+    desc: "Mean filter, Gaussian blur, dan median filter lengkap dengan kernel dan penjelasan matematis.",
+  },
+  {
+    icon: Layers,
+    title: "Morfologi Citra",
+    desc: "Dilasi, erosi, opening, closing, boundary extraction, dan thinning Zhang-Suen.",
+  },
+  {
+    icon: Filter,
+    title: "Deteksi Tepi",
+    desc: "Sobel, Canny, Prewitt, Roberts, dan Laplacian untuk memahami batas antar region.",
+  },
+  {
+    icon: Dot,
+    title: "Segmentasi Citra",
+    desc: "Global thresholding, adaptive thresholding, Otsu, dan K-Means color segmentation.",
+  },
+  {
+    icon: ScanLine,
+    title: "Scan Dokumen",
+    desc: "Deteksi kertas, deskew perspektif, peningkatan teks, dan output hitam-putih, grayscale, atau warna.",
   },
   {
     icon: Wand2,
     title: "Advanced Editor",
-    desc: "Editor foto lengkap: preview real-time, crop, cutout, remove background, dan export PNG/JPG.",
+    desc: "Editor foto lengkap: preview real-time, crop, filter, rotasi, flip, dan export PNG/JPG.",
   },
 ];
 
@@ -34,16 +54,16 @@ export default function Home({ onNavigate }: HomeProps) {
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.5 }}
-      className="max-w-4xl mx-auto space-y-12"
+      className="mx-auto max-w-4xl space-y-12"
     >
-      <div className="text-center pt-8 space-y-4">
+      <div className="space-y-4 pt-8 text-center">
         <motion.div
           initial={{ scale: 0.8, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           transition={{ delay: 0.1 }}
           className="inline-flex items-center gap-2 rounded-full border border-accent/30 bg-accent/10 px-4 py-1.5"
         >
-          <span className="text-xs text-accent font-medium">
+          <span className="text-xs font-medium text-accent">
             OpenCV + React + Flask
           </span>
         </motion.div>
@@ -52,7 +72,7 @@ export default function Home({ onNavigate }: HomeProps) {
           initial={{ y: 20, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           transition={{ delay: 0.2 }}
-          className="text-4xl md:text-5xl font-bold text-white leading-tight"
+          className="text-4xl font-bold leading-tight text-white md:text-5xl"
           style={{ fontFamily: "'Playfair Display', serif" }}
         >
           Image
@@ -64,11 +84,11 @@ export default function Home({ onNavigate }: HomeProps) {
           initial={{ y: 20, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           transition={{ delay: 0.3 }}
-          className="text-muted text-base max-w-xl mx-auto leading-relaxed"
+          className="mx-auto max-w-xl text-base leading-relaxed text-muted"
         >
           Platform edukasi pengolahan citra digital interaktif. Upload gambar,
-          pilih operasi, edit foto, dan lihat penjelasan matematis secara
-          real-time.
+          pilih operasi, scan dokumen, edit foto, dan lihat penjelasan matematis
+          secara real-time.
         </motion.p>
 
         <motion.div
@@ -79,20 +99,26 @@ export default function Home({ onNavigate }: HomeProps) {
         >
           <button
             onClick={() => onNavigate("dasar")}
-            className="px-6 py-2.5 bg-accent text-[#0C1014] rounded-xl font-semibold text-sm hover:bg-accent/90 transition-all shadow-glow"
+            className="rounded-xl bg-accent px-6 py-2.5 text-sm font-semibold text-[#0C1014] shadow-glow transition-all hover:bg-accent/90"
           >
             Mulai Eksplorasi
           </button>
           <button
+            onClick={() => onNavigate("scan")}
+            className="rounded-xl border border-accent/40 bg-accent/10 px-6 py-2.5 text-sm font-semibold text-accent transition-all hover:bg-accent/20"
+          >
+            Scan Dokumen
+          </button>
+          <button
             onClick={() => onNavigate("editor")}
-            className="px-6 py-2.5 border border-border bg-card text-white rounded-xl font-semibold text-sm hover:border-accent/50 transition-all"
+            className="rounded-xl border border-border bg-card px-6 py-2.5 text-sm font-semibold text-white transition-all hover:border-accent/50"
           >
             Buka Editor
           </button>
         </motion.div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {FEATURES.map((feat, i) => {
           const Icon = feat.icon;
           return (
@@ -101,17 +127,17 @@ export default function Home({ onNavigate }: HomeProps) {
               initial={{ y: 20, opacity: 0 }}
               animate={{ y: 0, opacity: 1 }}
               transition={{ delay: 0.1 * (i + 3) }}
-              className="rounded-xl border border-border bg-card p-5 hover:border-accent/30 transition-all group"
+              className="group rounded-xl border border-border bg-card p-5 transition-all hover:border-accent/30"
             >
               <div className="flex items-start gap-3">
-                <div className="p-2 rounded-lg bg-accent/10 border border-accent/20 group-hover:bg-accent/15 transition-colors">
+                <div className="rounded-lg border border-accent/20 bg-accent/10 p-2 transition-colors group-hover:bg-accent/15">
                   <Icon size={18} className="text-accent" />
                 </div>
                 <div>
-                  <h3 className="font-semibold text-white text-sm mb-1">
+                  <h3 className="mb-1 text-sm font-semibold text-white">
                     {feat.title}
                   </h3>
-                  <p className="text-xs text-muted leading-relaxed">
+                  <p className="text-xs leading-relaxed text-muted">
                     {feat.desc}
                   </p>
                 </div>
@@ -119,25 +145,6 @@ export default function Home({ onNavigate }: HomeProps) {
             </motion.div>
           );
         })}
-      </div>
-
-      <div className="flex flex-wrap justify-center gap-2 pb-4">
-        {[
-          "Python 3.11",
-          "OpenCV 4.x",
-          "Flask 3.x",
-          "React 18",
-          "TypeScript",
-          "NumPy",
-          "Tailwind CSS",
-        ].map((tech) => (
-          <span
-            key={tech}
-            className="px-3 py-1 text-xs font-mono border border-border bg-card text-muted rounded-full"
-          >
-            {tech}
-          </span>
-        ))}
       </div>
     </motion.div>
   );

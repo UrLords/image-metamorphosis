@@ -1,6 +1,6 @@
-import { useMemo, useRef, useState } from "react";
+﻿import { useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import axios from "axios";
+import apiClient from "../api/axiosClient";
 import {
   AlertCircle,
   Check,
@@ -13,13 +13,10 @@ import {
   RefreshCw,
   RotateCcw,
   RotateCw,
-  Scissors,
   Upload,
-  Wand2,
   X,
 } from "lucide-react";
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || "/api";
 
 interface EditorState {
   brightness: number;
@@ -144,7 +141,7 @@ export default function AdvancedEditor() {
   const [rotation, setRotation] = useState(0);
   const [flipH, setFlipH] = useState(false);
   const [flipV, setFlipV] = useState(false);
-  const [activeTool, setActiveTool] = useState<"none" | "crop" | "cutout">(
+  const [activeTool, setActiveTool] = useState<"none" | "crop">(
     "none",
   );
   const [rect, setRect] = useState<Rect | null>(null);
@@ -289,69 +286,18 @@ export default function AdvancedEditor() {
   };
 
   const callEditorEndpoint = async (
-    path: "/editor/remove-bg" | "/editor/cutout" | "/editor/apply",
+    path: "/editor/apply",
     payload: Record<string, unknown>,
     message: string,
   ) => {
     setIsProcessing(true);
     setProcessingText(message);
     try {
-      const response = await axios.post<{ result: string }>(
-        `${API_BASE_URL}${path}`,
-        payload,
-      );
+      const response = await apiClient.post<{ result: string }>(path, payload);
       return response.data.result;
     } finally {
       setIsProcessing(false);
       setProcessingText("");
-    }
-  };
-
-  const removeBackground = async () => {
-    if (!imageUrl) return;
-    try {
-      const result = await callEditorEndpoint(
-        "/editor/remove-bg",
-        { image: imageUrl },
-        "Menghapus background...",
-      );
-      setImageUrl(result);
-      showToast("Background berhasil dihapus.");
-    } catch {
-      showToast("Gagal remove background. Cek backend API.", "err");
-    }
-  };
-
-  const applyCutout = async () => {
-    if (!imageUrl || !rect || !imgRef.current || rect.w < 8 || rect.h < 8) {
-      showToast("Pilih area cutout terlebih dahulu.", "err");
-      return;
-    }
-
-    const img = imgRef.current;
-    const scaleX = img.naturalWidth / img.offsetWidth;
-    const scaleY = img.naturalHeight / img.offsetHeight;
-
-    try {
-      const result = await callEditorEndpoint(
-        "/editor/cutout",
-        {
-          image: imageUrl,
-          rect: {
-            x: Math.round(rect.x * scaleX),
-            y: Math.round(rect.y * scaleY),
-            w: Math.round(rect.w * scaleX),
-            h: Math.round(rect.h * scaleY),
-          },
-        },
-        "Memotong objek...",
-      );
-      setImageUrl(result);
-      setRect(null);
-      setActiveTool("none");
-      showToast("Cutout berhasil.");
-    } catch {
-      showToast("Gagal cutout. Cek backend API.", "err");
     }
   };
 
@@ -422,7 +368,7 @@ export default function AdvancedEditor() {
             Advanced Editor
           </h2>
           <p className="mt-1 text-sm text-muted">
-            Preview real-time, crop, cutout, remove background, dan export.
+            Preview real-time, crop, filter, rotasi, flip, dan export.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -501,24 +447,6 @@ export default function AdvancedEditor() {
               setRect(null);
               setActiveTool((value) => (value === "crop" ? "none" : "crop"));
             }}
-          />
-          <ToolButton
-            icon={Scissors}
-            label="Cutout"
-            active={activeTool === "cutout"}
-            disabled={!imageUrl}
-            onClick={() => {
-              setRect(null);
-              setActiveTool((value) =>
-                value === "cutout" ? "none" : "cutout",
-              );
-            }}
-          />
-          <ToolButton
-            icon={Wand2}
-            label="Rm BG"
-            disabled={!imageUrl || isProcessing}
-            onClick={removeBackground}
           />
         </div>
 
@@ -629,11 +557,11 @@ export default function AdvancedEditor() {
             <div className="flex gap-2">
               <button
                 type="button"
-                onClick={activeTool === "crop" ? applyCrop : applyCutout}
+                onClick={applyCrop}
                 className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-accent py-2 text-sm font-semibold text-[#0C1014] transition hover:bg-accent/90"
               >
                 <Check size={15} />
-                Apply {activeTool}
+                Apply crop
               </button>
               <button
                 type="button"
@@ -744,3 +672,6 @@ export default function AdvancedEditor() {
     </motion.div>
   );
 }
+
+
+

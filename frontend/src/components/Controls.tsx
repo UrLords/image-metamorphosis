@@ -1,6 +1,3 @@
-// src/components/Controls.tsx
-// Komponen kontrol yang dipakai di berbagai halaman operasi
-
 interface SliderProps {
   label: string;
   value: number;
@@ -117,10 +114,7 @@ export function ProcessButton({
           <span>Memproses...</span>
         </>
       ) : (
-        <>
-          <span>⚡</span>
-          <span>Proses Gambar</span>
-        </>
+        <span>Proses Gambar</span>
       )}
     </button>
   );
@@ -129,10 +123,11 @@ export function ProcessButton({
 interface ErrorBannerProps {
   message: string;
 }
+
 export function ErrorBanner({ message }: ErrorBannerProps) {
   return (
     <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3">
-      <p className="text-sm text-red-400">⚠ {message}</p>
+      <p className="text-sm text-red-400">Error: {message}</p>
     </div>
   );
 }
