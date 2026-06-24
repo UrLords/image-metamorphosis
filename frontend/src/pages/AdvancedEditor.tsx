@@ -14,7 +14,6 @@ import {
   RefreshCw,
   RotateCcw,
   RotateCw,
-  ScanLine,
   Scissors,
   Upload,
   X,
@@ -30,20 +29,6 @@ interface PipelineResponse {
   histogram_before?: number[];
   histogram_after?: number[];
   coverage_pct?: number;
-}
-
-type ScanMode = "color" | "grayscale" | "bw";
-
-interface DocScanResponse {
-  grayscale: string;
-  bw: string;
-  color: string;
-  method?: string;
-  stages?: PipelineStage[];
-  doc_detected?: boolean;
-  output_resolution?: string;
-  histogram_before?: number[];
-  histogram_after?: number[];
 }
 
 interface EditorState {
@@ -198,15 +183,6 @@ export default function AdvancedEditor() {
   >();
   const [showPipelineModal, setShowPipelineModal] = useState(false);
 
-  // ── Document Scanner (CamScanner-style) ────────────────────────────
-  const [scanResults, setScanResults] = useState<{
-    color: string;
-    grayscale: string;
-    bw: string;
-  } | null>(null);
-  const [scanMode, setScanMode] = useState<ScanMode>("bw");
-  const [docDetected, setDocDetected] = useState<boolean | undefined>();
-
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
   const imageBoxRef = useRef<HTMLDivElement>(null);
@@ -256,8 +232,6 @@ export default function AdvancedEditor() {
       setFlipV(false);
       setRect(null);
       setActiveTool("none");
-      setScanResults(null);
-      setDocDetected(undefined);
       setPipelineStages([]);
     };
     reader.readAsDataURL(file);
@@ -272,8 +246,6 @@ export default function AdvancedEditor() {
     setFlipV(false);
     setRect(null);
     setActiveTool("none");
-    setScanResults(null);
-    setDocDetected(undefined);
     showToast("Editor di-reset.");
   };
 
@@ -358,52 +330,6 @@ export default function AdvancedEditor() {
       setIsProcessing(false);
       setProcessingText("");
     }
-  };
-
-  const scanDocument = async () => {
-    if (!imageUrl) return;
-    setIsProcessing(true);
-    setProcessingText(
-      "Mendeteksi dokumen & menjalankan pipeline restorasi (8 tahap)...",
-    );
-    try {
-      const response = await axios.post<DocScanResponse>(
-        `${API_BASE_URL}/editor/scan-document`,
-        { image: imageUrl },
-      );
-      const results = {
-        color: response.data.color,
-        grayscale: response.data.grayscale,
-        bw: response.data.bw,
-      };
-      setScanResults(results);
-      setDocDetected(response.data.doc_detected);
-      setScanMode("bw");
-      setImageUrl(results.bw);
-      if (response.data.stages?.length) {
-        setPipelineStages(response.data.stages);
-        setPipelineMethod(response.data.method);
-        setPipelineCoverage(undefined);
-        setPipelineHistBefore(response.data.histogram_before);
-        setPipelineHistAfter(response.data.histogram_after);
-      }
-      showToast(
-        response.data.doc_detected
-          ? "Dokumen terdeteksi & diluruskan — lihat breakdown pipeline."
-          : "Tepi dokumen tidak terdeteksi, memakai frame penuh.",
-      );
-    } catch {
-      showToast("Gagal scan dokumen. Cek backend API.", "err");
-    } finally {
-      setIsProcessing(false);
-      setProcessingText("");
-    }
-  };
-
-  const switchScanMode = (mode: ScanMode) => {
-    if (!scanResults) return;
-    setScanMode(mode);
-    setImageUrl(scanResults[mode]);
   };
 
   const applyCutout = async () => {
@@ -609,43 +535,7 @@ export default function AdvancedEditor() {
               );
             }}
           />
-          <ToolButton
-            icon={ScanLine}
-            label="Scan Docs"
-            disabled={!imageUrl || isProcessing}
-            onClick={scanDocument}
-          />
         </div>
-
-        {scanResults && (
-          <div className="flex items-center gap-2 rounded-xl border border-border bg-card p-2">
-            <span className="px-1 text-[11px] text-muted">Mode Output:</span>
-            {[
-              { mode: "bw" as ScanMode, label: "Hitam-Putih" },
-              { mode: "grayscale" as ScanMode, label: "Grayscale" },
-              { mode: "color" as ScanMode, label: "Warna" },
-            ].map(({ mode, label }) => (
-              <button
-                key={mode}
-                type="button"
-                onClick={() => switchScanMode(mode)}
-                className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
-                  scanMode === mode
-                    ? "bg-accent text-[#0C1014]"
-                    : "border border-border bg-bg text-muted hover:text-white"
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-            {docDetected === false && (
-              <span className="ml-auto flex items-center gap-1 text-[11px] text-yellow-400">
-                <AlertCircle size={11} /> Tepi tidak terdeteksi — frame penuh
-                dipakai
-              </span>
-            )}
-          </div>
-        )}
 
         <div className="flex min-h-[460px] flex-col gap-3 rounded-xl border border-border bg-card p-4">
           <div className="flex min-h-6 flex-wrap items-center gap-3 text-xs text-muted">
