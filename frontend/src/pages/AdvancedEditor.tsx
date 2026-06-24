@@ -1,6 +1,6 @@
 ﻿import { useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import apiClient from "../api/axiosClient";
+import axios from "axios";
 import {
   AlertCircle,
   Check,
@@ -9,14 +9,42 @@ import {
   FlipHorizontal2,
   FlipVertical2,
   ImageOff,
+  Layers,
   Loader2,
   RefreshCw,
   RotateCcw,
   RotateCw,
+  ScanLine,
+  Scissors,
   Upload,
   X,
 } from "lucide-react";
+import PipelineModal, { type PipelineStage } from "../components/PipelineModal";
 
+const API_BASE_URL = import.meta.env.VITE_API_URL || "/api";
+
+interface PipelineResponse {
+  result: string;
+  method?: string;
+  stages?: PipelineStage[];
+  histogram_before?: number[];
+  histogram_after?: number[];
+  coverage_pct?: number;
+}
+
+type ScanMode = "color" | "grayscale" | "bw";
+
+interface DocScanResponse {
+  grayscale: string;
+  bw: string;
+  color: string;
+  method?: string;
+  stages?: PipelineStage[];
+  doc_detected?: boolean;
+  output_resolution?: string;
+  histogram_before?: number[];
+  histogram_after?: number[];
+}
 
 interface EditorState {
   brightness: number;
@@ -141,7 +169,7 @@ export default function AdvancedEditor() {
   const [rotation, setRotation] = useState(0);
   const [flipH, setFlipH] = useState(false);
   const [flipV, setFlipV] = useState(false);
-  const [activeTool, setActiveTool] = useState<"none" | "crop">(
+  const [activeTool, setActiveTool] = useState<"none" | "crop" | "cutout">(
     "none",
   );
   const [rect, setRect] = useState<Rect | null>(null);
@@ -155,6 +183,29 @@ export default function AdvancedEditor() {
     message: string;
     type: "ok" | "err";
   } | null>(null);
+
+  // ── Classical CV pipeline breakdown (remove-bg / cutout) ──────────
+  const [pipelineStages, setPipelineStages] = useState<PipelineStage[]>([]);
+  const [pipelineMethod, setPipelineMethod] = useState<string | undefined>();
+  const [pipelineCoverage, setPipelineCoverage] = useState<
+    number | undefined
+  >();
+  const [pipelineHistBefore, setPipelineHistBefore] = useState<
+    number[] | undefined
+  >();
+  const [pipelineHistAfter, setPipelineHistAfter] = useState<
+    number[] | undefined
+  >();
+  const [showPipelineModal, setShowPipelineModal] = useState(false);
+
+  // ── Document Scanner (CamScanner-style) ────────────────────────────
+  const [scanResults, setScanResults] = useState<{
+    color: string;
+    grayscale: string;
+    bw: string;
+  } | null>(null);
+  const [scanMode, setScanMode] = useState<ScanMode>("bw");
+  const [docDetected, setDocDetected] = useState<boolean | undefined>();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
@@ -205,6 +256,9 @@ export default function AdvancedEditor() {
       setFlipV(false);
       setRect(null);
       setActiveTool("none");
+      setScanResults(null);
+      setDocDetected(undefined);
+      setPipelineStages([]);
     };
     reader.readAsDataURL(file);
   };
@@ -218,6 +272,8 @@ export default function AdvancedEditor() {
     setFlipV(false);
     setRect(null);
     setActiveTool("none");
+    setScanResults(null);
+    setDocDetected(undefined);
     showToast("Editor di-reset.");
   };
 
@@ -286,15 +342,108 @@ export default function AdvancedEditor() {
   };
 
   const callEditorEndpoint = async (
-    path: "/editor/apply",
+    path: "/editor/cutout" | "/editor/apply",
     payload: Record<string, unknown>,
     message: string,
   ) => {
     setIsProcessing(true);
     setProcessingText(message);
     try {
-      const response = await apiClient.post<{ result: string }>(path, payload);
+      const response = await axios.post<{ result: string }>(
+        `${API_BASE_URL}${path}`,
+        payload,
+      );
       return response.data.result;
+    } finally {
+      setIsProcessing(false);
+      setProcessingText("");
+    }
+  };
+
+  const scanDocument = async () => {
+    if (!imageUrl) return;
+    setIsProcessing(true);
+    setProcessingText(
+      "Mendeteksi dokumen & menjalankan pipeline restorasi (8 tahap)...",
+    );
+    try {
+      const response = await axios.post<DocScanResponse>(
+        `${API_BASE_URL}/editor/scan-document`,
+        { image: imageUrl },
+      );
+      const results = {
+        color: response.data.color,
+        grayscale: response.data.grayscale,
+        bw: response.data.bw,
+      };
+      setScanResults(results);
+      setDocDetected(response.data.doc_detected);
+      setScanMode("bw");
+      setImageUrl(results.bw);
+      if (response.data.stages?.length) {
+        setPipelineStages(response.data.stages);
+        setPipelineMethod(response.data.method);
+        setPipelineCoverage(undefined);
+        setPipelineHistBefore(response.data.histogram_before);
+        setPipelineHistAfter(response.data.histogram_after);
+      }
+      showToast(
+        response.data.doc_detected
+          ? "Dokumen terdeteksi & diluruskan — lihat breakdown pipeline."
+          : "Tepi dokumen tidak terdeteksi, memakai frame penuh.",
+      );
+    } catch {
+      showToast("Gagal scan dokumen. Cek backend API.", "err");
+    } finally {
+      setIsProcessing(false);
+      setProcessingText("");
+    }
+  };
+
+  const switchScanMode = (mode: ScanMode) => {
+    if (!scanResults) return;
+    setScanMode(mode);
+    setImageUrl(scanResults[mode]);
+  };
+
+  const applyCutout = async () => {
+    if (!imageUrl || !rect || !imgRef.current || rect.w < 8 || rect.h < 8) {
+      showToast("Pilih area cutout terlebih dahulu.", "err");
+      return;
+    }
+
+    const img = imgRef.current;
+    const scaleX = img.naturalWidth / img.offsetWidth;
+    const scaleY = img.naturalHeight / img.offsetHeight;
+
+    setIsProcessing(true);
+    setProcessingText("Menjalankan pipeline segmentasi (9 tahap)...");
+    try {
+      const response = await axios.post<PipelineResponse>(
+        `${API_BASE_URL}/editor/cutout`,
+        {
+          image: imageUrl,
+          rect: {
+            x: Math.round(rect.x * scaleX),
+            y: Math.round(rect.y * scaleY),
+            w: Math.round(rect.w * scaleX),
+            h: Math.round(rect.h * scaleY),
+          },
+        },
+      );
+      setImageUrl(response.data.result);
+      if (response.data.stages?.length) {
+        setPipelineStages(response.data.stages);
+        setPipelineMethod(response.data.method);
+        setPipelineCoverage(response.data.coverage_pct);
+        setPipelineHistBefore(response.data.histogram_before);
+        setPipelineHistAfter(response.data.histogram_after);
+      }
+      setRect(null);
+      setActiveTool("none");
+      showToast("Cutout berhasil — lihat breakdown pipeline.");
+    } catch {
+      showToast("Gagal cutout. Cek backend API.", "err");
     } finally {
       setIsProcessing(false);
       setProcessingText("");
@@ -368,7 +517,7 @@ export default function AdvancedEditor() {
             Advanced Editor
           </h2>
           <p className="mt-1 text-sm text-muted">
-            Preview real-time, crop, filter, rotasi, flip, dan export.
+            Preview real-time, crop, cutout, remove background, dan export.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -448,7 +597,55 @@ export default function AdvancedEditor() {
               setActiveTool((value) => (value === "crop" ? "none" : "crop"));
             }}
           />
+          <ToolButton
+            icon={Scissors}
+            label="Cutout"
+            active={activeTool === "cutout"}
+            disabled={!imageUrl}
+            onClick={() => {
+              setRect(null);
+              setActiveTool((value) =>
+                value === "cutout" ? "none" : "cutout",
+              );
+            }}
+          />
+          <ToolButton
+            icon={ScanLine}
+            label="Scan Docs"
+            disabled={!imageUrl || isProcessing}
+            onClick={scanDocument}
+          />
         </div>
+
+        {scanResults && (
+          <div className="flex items-center gap-2 rounded-xl border border-border bg-card p-2">
+            <span className="px-1 text-[11px] text-muted">Mode Output:</span>
+            {[
+              { mode: "bw" as ScanMode, label: "Hitam-Putih" },
+              { mode: "grayscale" as ScanMode, label: "Grayscale" },
+              { mode: "color" as ScanMode, label: "Warna" },
+            ].map(({ mode, label }) => (
+              <button
+                key={mode}
+                type="button"
+                onClick={() => switchScanMode(mode)}
+                className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
+                  scanMode === mode
+                    ? "bg-accent text-[#0C1014]"
+                    : "border border-border bg-bg text-muted hover:text-white"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+            {docDetected === false && (
+              <span className="ml-auto flex items-center gap-1 text-[11px] text-yellow-400">
+                <AlertCircle size={11} /> Tepi tidak terdeteksi — frame penuh
+                dipakai
+              </span>
+            )}
+          </div>
+        )}
 
         <div className="flex min-h-[460px] flex-col gap-3 rounded-xl border border-border bg-card p-4">
           <div className="flex min-h-6 flex-wrap items-center gap-3 text-xs text-muted">
@@ -464,6 +661,16 @@ export default function AdvancedEditor() {
                   <span className="text-accent">
                     Drag pada gambar untuk memilih area {activeTool}.
                   </span>
+                )}
+                {pipelineStages.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setShowPipelineModal(true)}
+                    className="ml-auto flex items-center gap-1.5 rounded-full border border-accent/40 bg-accent/10 px-2.5 py-1 text-[11px] font-medium text-accent transition hover:bg-accent/20"
+                  >
+                    <Layers size={11} />
+                    Lihat Pipeline Breakdown ({pipelineStages.length} tahap)
+                  </button>
                 )}
               </>
             ) : (
@@ -557,11 +764,11 @@ export default function AdvancedEditor() {
             <div className="flex gap-2">
               <button
                 type="button"
-                onClick={applyCrop}
+                onClick={activeTool === "crop" ? applyCrop : applyCutout}
                 className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-accent py-2 text-sm font-semibold text-[#0C1014] transition hover:bg-accent/90"
               >
                 <Check size={15} />
-                Apply crop
+                Apply {activeTool}
               </button>
               <button
                 type="button"
@@ -669,9 +876,16 @@ export default function AdvancedEditor() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      <PipelineModal
+        open={showPipelineModal}
+        onClose={() => setShowPipelineModal(false)}
+        stages={pipelineStages}
+        method={pipelineMethod}
+        coveragePct={pipelineCoverage}
+        histogramBefore={pipelineHistBefore}
+        histogramAfter={pipelineHistAfter}
+      />
     </motion.div>
   );
 }
-
-
-
