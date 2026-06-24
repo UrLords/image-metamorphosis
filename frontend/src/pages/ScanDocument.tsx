@@ -219,7 +219,9 @@ export default function ScanDocument() {
     setResult(null);
   };
 
-  const displaySrc = result ? result[activeMode] : null;
+  const displaySrc = result ? result[activeMode] || result.bw || result.grayscale || result.color : null;
+  const detectionScore =
+    typeof result?.detection_score === "number" ? result.detection_score : 0;
 
   return (
     <motion.div
@@ -493,9 +495,7 @@ export default function ScanDocument() {
           {result && (
             <div className="flex flex-wrap items-center gap-3 px-1 text-xs text-muted">
               <span className="font-mono">{result.output_resolution}</span>
-              <span className="font-mono">
-                score {result.detection_score.toFixed(2)}
-              </span>
+              <span className="font-mono">score {detectionScore.toFixed(2)}</span>
               {result.doc_detected ? (
                 <span className="flex items-center gap-1 text-green-400">
                   <Check size={11} /> Dokumen terdeteksi dan diluruskan
