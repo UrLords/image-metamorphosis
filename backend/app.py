@@ -1,24 +1,152 @@
-import os, base64, math
+﻿import os, base64, math, json, time, binascii
+from functools import wraps
 import numpy as np
 import cv2
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify, send_from_directory, g
 from flask_cors import CORS
+from dotenv import load_dotenv
+
+try:
+    import firebase_admin
+    from firebase_admin import auth as firebase_auth, credentials
+except Exception:
+    firebase_admin = None
+    firebase_auth = None
+    credentials = None
+
+load_dotenv()
 
 app = Flask(__name__)
-CORS(app)
+app.config["MAX_CONTENT_LENGTH"] = int(os.getenv("MAX_CONTENT_LENGTH", str(16 * 1024 * 1024)))
+
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
+CORS_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv("CORS_ORIGINS", f"{FRONTEND_URL},http://localhost:5173,http://127.0.0.1:5173").split(",")
+    if origin.strip()
+]
+REQUIRE_AUTH = os.getenv("REQUIRE_AUTH", "true").lower() == "true"
+MAX_IMAGE_PIXELS = int(os.getenv("MAX_IMAGE_PIXELS", "12000000"))
+RATE_LIMIT_WINDOW = int(os.getenv("RATE_LIMIT_WINDOW", "60"))
+RATE_LIMIT_MAX = int(os.getenv("RATE_LIMIT_MAX", "40"))
+
+CORS(
+    app,
+    resources={r"/api/*": {"origins": CORS_ORIGINS}},
+    supports_credentials=False,
+    allow_headers=["Content-Type", "Authorization"],
+    methods=["GET", "POST", "OPTIONS"],
+)
 
 FRONTEND_BUILD = os.path.join(os.path.dirname(__file__), "..", "frontend", "dist")
+_RATE_BUCKETS = {}
 
-# ══════════════════════════════════════════════════════
+
+def init_firebase():
+    if not firebase_admin or firebase_admin._apps:
+        return
+    service_account_json = os.getenv("FIREBASE_SERVICE_ACCOUNT_JSON", "").strip()
+    service_account_base64 = os.getenv("FIREBASE_SERVICE_ACCOUNT_BASE64", "").strip()
+    project_id = os.getenv("FIREBASE_PROJECT_ID", "").strip()
+    try:
+        if service_account_base64:
+            decoded = base64.b64decode(service_account_base64).decode("utf-8")
+            cred = credentials.Certificate(json.loads(decoded))
+            firebase_admin.initialize_app(cred)
+        elif service_account_json:
+            if os.path.exists(service_account_json):
+                cred = credentials.Certificate(service_account_json)
+            else:
+                cred = credentials.Certificate(json.loads(service_account_json))
+            firebase_admin.initialize_app(cred)
+        elif project_id:
+            firebase_admin.initialize_app(options={"projectId": project_id})
+    except Exception as exc:
+        print(f"[security] Firebase init failed: {exc}")
+
+
+init_firebase()
+
+
+@app.after_request
+def add_security_headers(response):
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    if request.headers.get("X-Forwarded-Proto") == "https" or request.is_secure:
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    return response
+
+
+def get_client_key():
+    auth_header = request.headers.get("Authorization", "")
+    token_hint = auth_header[-24:] if auth_header.startswith("Bearer ") else ""
+    forwarded = request.headers.get("X-Forwarded-For", "")
+    ip = forwarded.split(",")[0].strip() if forwarded else request.remote_addr or "unknown"
+    return f"{ip}:{token_hint}"
+
+
+def rate_limited():
+    now = time.time()
+    key = get_client_key()
+    bucket = [ts for ts in _RATE_BUCKETS.get(key, []) if now - ts < RATE_LIMIT_WINDOW]
+    if len(bucket) >= RATE_LIMIT_MAX:
+        _RATE_BUCKETS[key] = bucket
+        return True
+    bucket.append(now)
+    _RATE_BUCKETS[key] = bucket
+    return False
+
+
+def require_firebase_auth(fn):
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        if rate_limited():
+            return jsonify({"error": "Terlalu banyak request. Coba lagi sebentar."}), 429
+
+        if not REQUIRE_AUTH:
+            g.user = None
+            return fn(*args, **kwargs)
+
+        auth_header = request.headers.get("Authorization", "")
+        if not auth_header.startswith("Bearer "):
+            return jsonify({"error": "Login diperlukan untuk memakai fitur ini."}), 401
+
+        if not firebase_admin or not firebase_admin._apps or firebase_auth is None:
+            return jsonify({"error": "Firebase auth belum dikonfigurasi di backend."}), 503
+
+        token = auth_header.split(" ", 1)[1].strip()
+        try:
+            g.user = firebase_auth.verify_id_token(token, check_revoked=True)
+        except Exception:
+            return jsonify({"error": "Token login tidak valid atau sudah kedaluwarsa."}), 401
+
+        return fn(*args, **kwargs)
+
+    return wrapper
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 # HELPERS
-# ══════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 def decode_image(b64: str) -> np.ndarray:
-    _, data = b64.split(",", 1)
-    arr = np.frombuffer(base64.b64decode(data), dtype=np.uint8)
+    if not isinstance(b64, str) or "," not in b64:
+        raise ValueError("Format gambar tidak valid")
+    header, data = b64.split(",", 1)
+    if not header.startswith("data:image/"):
+        raise ValueError("File harus berupa gambar")
+    if len(data) > app.config["MAX_CONTENT_LENGTH"] * 2:
+        raise ValueError("Ukuran gambar terlalu besar")
+    try:
+        arr = np.frombuffer(base64.b64decode(data, validate=True), dtype=np.uint8)
+    except (binascii.Error, ValueError):
+        raise ValueError("Base64 gambar tidak valid")
     img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
     if img is None:
         raise ValueError("Gambar tidak valid")
+    h, w = img.shape[:2]
+    if h * w > MAX_IMAGE_PIXELS:
+        raise ValueError(f"Resolusi gambar terlalu besar. Maksimum {MAX_IMAGE_PIXELS} piksel.")
     return img
 
 def encode_image(img: np.ndarray) -> str:
@@ -49,15 +177,41 @@ def get_pixel_matrix(img: np.ndarray, n=5, r0=0, c0=0) -> list:
     h, w = gray.shape
     return gray[r0:min(r0+n,h), c0:min(c0+n,w)].tolist()
 
-def get_histogram(img: np.ndarray) -> list:
+def _hist_counts(channel: np.ndarray) -> np.ndarray:
+    return cv2.calcHist([channel], [0], None, [256], [0, 256]).reshape(-1)
+
+
+def _scale_hist(hist: np.ndarray, max_value: float) -> list:
+    if max_value <= 0:
+        return [0.0] * 256
+    scaled = hist.astype(np.float32) / max_value
+    return [float(v) if math.isfinite(float(v)) else 0.0 for v in scaled]
+
+
+def get_histogram(img: np.ndarray) -> dict:
     try:
         img = img.astype(np.uint8) if img.dtype != np.uint8 else img
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if len(img.shape)==3 else img
-        hist = cv2.calcHist([gray],[0],None,[256],[0,256])
-        cv2.normalize(hist, hist, 0, 1, cv2.NORM_MINMAX)
-        return [float(v[0]) if math.isfinite(float(v[0])) else 0.0 for v in hist]
-    except:
-        return [0.0]*256
+        if len(img.shape) == 2:
+            hist = _hist_counts(img)
+            lum = _scale_hist(hist, float(hist.max()))
+            return {"red": [], "green": [], "blue": [], "luminance": lum}
+
+        b, g, r = cv2.split(img[:, :, :3])
+        gray = cv2.cvtColor(img[:, :, :3], cv2.COLOR_BGR2GRAY)
+        red_hist = _hist_counts(r)
+        green_hist = _hist_counts(g)
+        blue_hist = _hist_counts(b)
+        lum_hist = _hist_counts(gray)
+        max_value = float(max(red_hist.max(), green_hist.max(), blue_hist.max(), lum_hist.max()))
+        return {
+            "red": _scale_hist(red_hist, max_value),
+            "green": _scale_hist(green_hist, max_value),
+            "blue": _scale_hist(blue_hist, max_value),
+            "luminance": _scale_hist(lum_hist, max_value),
+        }
+    except Exception:
+        empty = [0.0] * 256
+        return {"red": empty, "green": empty, "blue": empty, "luminance": empty}
 
 def op_grayscale(img, params):
     h, w = img.shape[:2]
@@ -68,10 +222,10 @@ def op_grayscale(img, params):
     return {"result": result, "explanation": {
         "title": "Konversi Grayscale",
         "formula": r"L = 0.299R + 0.587G + 0.114B",
-        "description": "Setiap piksel RGB → satu nilai luminance. Bobot berbeda karena mata manusia lebih sensitif terhadap hijau.",
+        "description": "Setiap piksel RGB â†’ satu nilai luminance. Bobot berbeda karena mata manusia lebih sensitif terhadap hijau.",
         "pixel_before": get_pixel_matrix(img), "pixel_after": get_pixel_matrix(result),
-        "steps": [f"R={r_}, G={g}, B={b}", f"L = 0.299×{r_} + 0.587×{g} + 0.114×{b} = {lum} ≈ {int(lum)}"],
-        "image_info": {"width": w, "height": h, "mode": "BGR→Grayscale", "size_kb": round(w*h*3/1024,1)},
+        "steps": [f"R={r_}, G={g}, B={b}", f"L = 0.299Ã—{r_} + 0.587Ã—{g} + 0.114Ã—{b} = {lum} â‰ˆ {int(lum)}"],
+        "image_info": {"width": w, "height": h, "mode": "BGRâ†’Grayscale", "size_kb": round(w*h*3/1024,1)},
         "histogram_before": get_histogram(img), "histogram_after": get_histogram(result),
     }}
 
@@ -85,8 +239,8 @@ def op_blending(img, params):
     return {"result": result, "explanation": {
         "title": "Image Blending",
         "formula": r"g(x,y) = \alpha \cdot f_1(x,y) + (1-\alpha) \cdot f_2(x,y)",
-        "description": f"Dua gambar digabungkan dengan α={alpha} dan (1-α)={(1-alpha):.2f}.",
-        "steps": [f"α={alpha}", f"Piksel img1[0,0]: {p1}", f"Piksel img2[0,0]: {p2}", f"Output ≈ {[round(alpha*a+(1-alpha)*b) for a,b in zip(p1,p2)]}"],
+        "description": f"Dua gambar digabungkan dengan Î±={alpha} dan (1-Î±)={(1-alpha):.2f}.",
+        "steps": [f"Î±={alpha}", f"Piksel img1[0,0]: {p1}", f"Piksel img2[0,0]: {p2}", f"Output â‰ˆ {[round(alpha*a+(1-alpha)*b) for a,b in zip(p1,p2)]}"],
         "kernel": None, "pixel_before": get_pixel_matrix(img), "pixel_after": get_pixel_matrix(result),
         "histogram_before": get_histogram(img), "histogram_after": get_histogram(result),
     }}
@@ -98,8 +252,8 @@ def op_subtraction(img, params):
     return {"result": result, "explanation": {
         "title": "Background Subtraction",
         "formula": r"D(x,y) = |f(x,y) - B(x,y)|",
-        "description": "Background (Gaussian blur 51×51) dikurangi dari gambar asli.",
-        "steps": ["B(x,y) = GaussianBlur(f, 51×51)", f"Piksel asli[10,10]: {p1}", f"Background[10,10]: {p2}", f"D = {[abs(int(a)-int(b)) for a,b in zip(p1,p2)]}"],
+        "description": "Background (Gaussian blur 51Ã—51) dikurangi dari gambar asli.",
+        "steps": ["B(x,y) = GaussianBlur(f, 51Ã—51)", f"Piksel asli[10,10]: {p1}", f"Background[10,10]: {p2}", f"D = {[abs(int(a)-int(b)) for a,b in zip(p1,p2)]}"],
         "pixel_before": get_pixel_matrix(img), "pixel_after": get_pixel_matrix(result),
         "histogram_before": get_histogram(img), "histogram_after": get_histogram(result),
     }}
@@ -113,7 +267,7 @@ def op_multiplication(img, params):
         "title": "Image Multiplication",
         "formula": r"g(x,y) = \frac{f_1(x,y) \times f_2(x,y)}{255}",
         "description": "Perkalian piksel dua gambar, dibagi 255 agar hasilnya kembali ke rentang [0,255]. Berguna untuk masking.",
-        "steps": ["Nilai piksel f1 × f2", "Dibagi 255 untuk mencegah overflow", "Piksel hitam di img2 → area jadi hitam total"],
+        "steps": ["Nilai piksel f1 Ã— f2", "Dibagi 255 untuk mencegah overflow", "Piksel hitam di img2 â†’ area jadi hitam total"],
         "pixel_before": get_pixel_matrix(img), "pixel_after": get_pixel_matrix(result),
         "histogram_before": get_histogram(img), "histogram_after": get_histogram(result),
     }}
@@ -128,7 +282,7 @@ def op_division(img, params):
         "title": "Image Division",
         "formula": r"g(x,y) = \frac{f_1(x,y)}{f_2(x,y)} \times 255",
         "description": "Pembagian piksel dua gambar. Berguna untuk Shading Correction (koreksi pencahayaan tidak merata).",
-        "steps": ["Piksel 0 di img2 → diganti 1 agar tidak error (ZeroDivision)", "f1 ÷ f2 × 255", "Area gelap akibat bayangan bisa kembali normal"],
+        "steps": ["Piksel 0 di img2 â†’ diganti 1 agar tidak error (ZeroDivision)", "f1 Ã· f2 Ã— 255", "Area gelap akibat bayangan bisa kembali normal"],
         "pixel_before": get_pixel_matrix(img), "pixel_after": get_pixel_matrix(result),
         "histogram_before": get_histogram(img), "histogram_after": get_histogram(result),
     }}
@@ -142,8 +296,8 @@ def op_rotation(img, params):
     return {"result": result, "explanation": {
         "title": "Rotasi",
         "formula": r"\begin{pmatrix}x'\\y'\end{pmatrix}=\begin{pmatrix}\cos\theta&-\sin\theta\\\sin\theta&\cos\theta\end{pmatrix}\begin{pmatrix}x-c_x\\y-c_y\end{pmatrix}+\begin{pmatrix}c_x\\c_y\end{pmatrix}",
-        "description": f"Rotasi {angle}° terhadap pusat ({cx},{cy}).",
-        "steps": [f"θ={angle}°, cosθ={round(math.cos(rad),4)}, sinθ={round(math.sin(rad),4)}", f"Pusat: ({cx},{cy})"],
+        "description": f"Rotasi {angle}Â° terhadap pusat ({cx},{cy}).",
+        "steps": [f"Î¸={angle}Â°, cosÎ¸={round(math.cos(rad),4)}, sinÎ¸={round(math.sin(rad),4)}", f"Pusat: ({cx},{cy})"],
         "matrix": M.tolist(), "pixel_before": get_pixel_matrix(img), "pixel_after": get_pixel_matrix(result),
         "histogram_before": get_histogram(img), "histogram_after": get_histogram(result),
     }}
@@ -156,7 +310,7 @@ def op_scaling(img, params):
         "title": "Scaling (Resize)",
         "formula": r"\begin{pmatrix}x'\\y'\end{pmatrix}=\begin{pmatrix}s_x&0\\0&s_y\end{pmatrix}\begin{pmatrix}x\\y\end{pmatrix}",
         "description": f"Resize dengan sx={sx}, sy={sy}.",
-        "steps": [f"Asli: {w}×{h}", f"Baru: {nw}×{nh}", "Interpolasi bilinear untuk mengisi piksel."],
+        "steps": [f"Asli: {w}Ã—{h}", f"Baru: {nw}Ã—{nh}", "Interpolasi bilinear untuk mengisi piksel."],
         "pixel_before": get_pixel_matrix(img), "pixel_after": get_pixel_matrix(result),
         "histogram_before": get_histogram(img), "histogram_after": get_histogram(result),
     }}
@@ -169,7 +323,7 @@ def op_translation(img, params):
         "title": "Translasi",
         "formula": r"\begin{pmatrix}x'\\y'\end{pmatrix}=\begin{pmatrix}x\\y\end{pmatrix}+\begin{pmatrix}t_x\\t_y\end{pmatrix}",
         "description": f"Geser tx={tx}px kanan, ty={ty}px bawah.",
-        "steps": [f"M = [[1,0,{tx}],[0,1,{ty}]]", f"Piksel (50,30) → ({50+tx},{30+ty})"],
+        "steps": [f"M = [[1,0,{tx}],[0,1,{ty}]]", f"Piksel (50,30) â†’ ({50+tx},{30+ty})"],
         "matrix": M.tolist(), "pixel_before": get_pixel_matrix(img), "pixel_after": get_pixel_matrix(result),
         "histogram_before": get_histogram(img), "histogram_after": get_histogram(result),
     }}
@@ -193,8 +347,8 @@ def op_brightness(img, params):
     return {"result": result, "explanation": {
         "title": "Brightness (Kecerahan)",
         "formula": r"g(x,y) = \text{clip}(f(x,y) + \beta,\;0,\;255)",
-        "description": f"β={beta} ditambahkan ke setiap piksel.",
-        "steps": [f"β={beta}", f"Piksel[0,0]B: {p}", f"g={p}+{beta}={p+beta}", f"Clip→{po}"],
+        "description": f"Î²={beta} ditambahkan ke setiap piksel.",
+        "steps": [f"Î²={beta}", f"Piksel[0,0]B: {p}", f"g={p}+{beta}={p+beta}", f"Clipâ†’{po}"],
         "pixel_before": get_pixel_matrix(img), "pixel_after": get_pixel_matrix(result),
         "histogram_before": get_histogram(img), "histogram_after": get_histogram(result),
     }}
@@ -205,8 +359,8 @@ def op_contrast(img, params):
     return {"result": result, "explanation": {
         "title": "Contrast (Kontras)",
         "formula": r"g(x,y) = \text{clip}(\alpha \cdot f(x,y),\;0,\;255)",
-        "description": f"α={alpha}. α>1 meningkatkan, α<1 mengurangi kontras.",
-        "steps": [f"α={alpha}", f"Piksel[0,0]B: {p}", f"g={alpha}×{p}={round(alpha*p,2)}", f"Clip→{po}"],
+        "description": f"Î±={alpha}. Î±>1 meningkatkan, Î±<1 mengurangi kontras.",
+        "steps": [f"Î±={alpha}", f"Piksel[0,0]B: {p}", f"g={alpha}Ã—{p}={round(alpha*p,2)}", f"Clipâ†’{po}"],
         "pixel_before": get_pixel_matrix(img), "pixel_after": get_pixel_matrix(result),
         "histogram_before": get_histogram(img), "histogram_after": get_histogram(result),
     }}
@@ -243,9 +397,9 @@ def op_mean_filter(img, params):
     gray=cv2.cvtColor(img,cv2.COLOR_BGR2GRAY); patch=get_pixel_matrix(gray,n=ksize)
     flat=[gray[i,j] for i in range(ksize) for j in range(ksize)]
     return {"result": result, "explanation": {
-        "title": f"Mean Filter ({ksize}×{ksize})",
+        "title": f"Mean Filter ({ksize}Ã—{ksize})",
         "formula": r"g(x,y) = \frac{1}{k^2}\sum_{m,n \in W} f(x+m, y+n)",
-        "description": f"Rata-rata {ksize}×{ksize}={ksize*ksize} tetangga. Mengurangi noise acak.",
+        "description": f"Rata-rata {ksize}Ã—{ksize}={ksize*ksize} tetangga. Mengurangi noise acak.",
         "kernel": [[kv]*ksize for _ in range(ksize)],
         "steps": [f"Bobot=1/{ksize*ksize}={kv}", f"Rata-rata={round(sum(flat)/len(flat),2)}"],
         "pixel_before": patch, "pixel_after": get_pixel_matrix(result,n=ksize),
@@ -257,9 +411,9 @@ def op_median_filter(img, params):
     result=cv2.medianBlur(img,ksize); gray=cv2.cvtColor(img,cv2.COLOR_BGR2GRAY)
     flat=sorted([gray[i,j] for i in range(ksize) for j in range(ksize)])
     return {"result": result, "explanation": {
-        "title": f"Median Filter ({ksize}×{ksize})",
+        "title": f"Median Filter ({ksize}Ã—{ksize})",
         "formula": r"g(x,y) = \text{median}\{f(x+m, y+n) \;|\; m,n \in W\}",
-        "description": f"Median dari {ksize}×{ksize} tetangga. Efektif untuk salt-and-pepper noise.",
+        "description": f"Median dari {ksize}Ã—{ksize} tetangga. Efektif untuk salt-and-pepper noise.",
         "steps": [f"Nilai terurut: {flat}", f"Median (ke-{len(flat)//2+1})={flat[len(flat)//2]}"],
         "pixel_before": get_pixel_matrix(gray,n=ksize), "pixel_after": get_pixel_matrix(result,n=ksize),
         "histogram_before": get_histogram(img), "histogram_after": get_histogram(result),
@@ -278,7 +432,7 @@ def op_sobel(img, params):
         "formula": fml, "description": "Deteksi tepi via gradien first-order.",
         "kernel": kern, "pixel_before": get_pixel_matrix(gray,n=3), "pixel_after": get_pixel_matrix(mag,n=3),
         "histogram_before": get_histogram(img), "histogram_after": get_histogram(result),
-        "steps": ["Kernel Sobel dikonvolusi dengan gambar grayscale", "Magnitude = √(Gx²+Gy²)"],
+        "steps": ["Kernel Sobel dikonvolusi dengan gambar grayscale", "Magnitude = âˆš(GxÂ²+GyÂ²)"],
     }}
 
 def op_enhance_pipeline(img, params):
@@ -289,8 +443,8 @@ def op_enhance_pipeline(img, params):
     return {"result": result, "explanation": {
         "title": "Enhancement Pipeline",
         "formula": r"g=\text{Median}(\text{Sharpen}(\alpha\cdot(f+\beta)))",
-        "description": "Pipeline: Brightness→Contrast→Sharpening→Denoising.",
-        "steps": [f"1. Brightness: g₁=f+{beta}", f"2. Contrast: g₂={alpha}×g₁", "3. Unsharp Mask: g₃=1.5×g₂−0.5×Blur", "4. Median: g₄=Median(g₃,3)"],
+        "description": "Pipeline: Brightnessâ†’Contrastâ†’Sharpeningâ†’Denoising.",
+        "steps": [f"1. Brightness: gâ‚=f+{beta}", f"2. Contrast: gâ‚‚={alpha}Ã—gâ‚", "3. Unsharp Mask: gâ‚ƒ=1.5Ã—gâ‚‚âˆ’0.5Ã—Blur", "4. Median: gâ‚„=Median(gâ‚ƒ,3)"],
         "pipeline": [{"name":"Original","beta":0,"alpha":1.0},{"name":"+Brightness","beta":beta,"alpha":1.0},{"name":"+Contrast","beta":beta,"alpha":alpha},{"name":"+Sharpen+Denoise","beta":beta,"alpha":alpha}],
         "pixel_before": get_pixel_matrix(img), "pixel_after": get_pixel_matrix(result),
         "histogram_before": get_histogram(img), "histogram_after": get_histogram(result),
@@ -300,8 +454,8 @@ def op_enhance_pipeline(img, params):
 def op_saturation(img, params):
     """
     Saturasi: ubah kejenuhan warna via ruang HSV
-    s > 0  → warna lebih jenuh/vivid
-    s < 0  → warna memudar (menuju grayscale)
+    s > 0  â†’ warna lebih jenuh/vivid
+    s < 0  â†’ warna memudar (menuju grayscale)
     """
     s_factor = float(params.get("saturation", 50))
 
@@ -318,15 +472,15 @@ def op_saturation(img, params):
         "formula": r"S'(x,y) = \text{clip}(S(x,y) \times (1 + \frac{s}{100}),\;0,\;255)",
         "description": (
             f"Saturasi diubah sebesar s={s_factor}. "
-            "Ruang warna dikonversi BGR→HSV, channel S (kejenuhan) dimodifikasi, lalu dikembalikan ke BGR. "
-            "s=+100 menggandakan saturasi, s=-100 → gambar grayscale."
+            "Ruang warna dikonversi BGRâ†’HSV, channel S (kejenuhan) dimodifikasi, lalu dikembalikan ke BGR. "
+            "s=+100 menggandakan saturasi, s=-100 â†’ gambar grayscale."
         ),
         "steps": [
-            "1. BGR → HSV  (Hue: 0-180°, Saturation: 0-255, Value: 0-255)",
+            "1. BGR â†’ HSV  (Hue: 0-180Â°, Saturation: 0-255, Value: 0-255)",
             f"   scale = 1 + {s_factor}/100 = {round(scale,2)}",
             f"2. Piksel [0,0] HSV asli: H={p_h}, S={p_s}, V={p_v}",
-            f"3. S' = clip({p_s} × {round(scale,2)}, 0, 255) = {p_s_new}",
-            "4. HSV → BGR  (konversi kembali ke format display)",
+            f"3. S' = clip({p_s} Ã— {round(scale,2)}, 0, 255) = {p_s_new}",
+            "4. HSV â†’ BGR  (konversi kembali ke format display)",
         ],
         "pixel_before": get_pixel_matrix(img),
         "pixel_after": get_pixel_matrix(result),
@@ -352,15 +506,15 @@ def op_hue_shift(img, params):
         "title": "Hue Shift (Pergeseran Warna)",
         "formula": r"H'(x,y) = (H(x,y) + \Delta h) \mod 180",
         "description": (
-            f"Hue digeser {shift}°. Roda warna diputar: merah→kuning→hijau→biru→ungu→merah. "
+            f"Hue digeser {shift}Â°. Roda warna diputar: merahâ†’kuningâ†’hijauâ†’biruâ†’unguâ†’merah. "
             "OpenCV menggunakan rentang H: 0-180 (bukan 0-360)."
         ),
         "steps": [
-            "1. BGR → HSV",
-            f"   Δh = {shift}° → dalam OpenCV = {shift//2} (skala ½)",
-            f"2. Piksel [0,0] Hue asli: {p_h} (={p_h*2}° aktual)",
+            "1. BGR â†’ HSV",
+            f"   Î”h = {shift}Â° â†’ dalam OpenCV = {shift//2} (skala Â½)",
+            f"2. Piksel [0,0] Hue asli: {p_h} (={p_h*2}Â° aktual)",
             f"3. H' = ({p_h} + {shift//2}) mod 180 = {p_h_new}",
-            "4. HSV → BGR",
+            "4. HSV â†’ BGR",
         ],
         "pixel_before": get_pixel_matrix(img),
         "pixel_after": get_pixel_matrix(result),
@@ -372,7 +526,7 @@ def op_hue_shift(img, params):
 def op_sharpness(img, params):
     """
     Sharpness via Unsharp Masking:
-    g = clip(img + amount × (img - GaussianBlur(img)))
+    g = clip(img + amount Ã— (img - GaussianBlur(img)))
     """
     amount = float(params.get("amount", 1.0))
 
@@ -386,7 +540,7 @@ def op_sharpness(img, params):
     p_sharp = int(min(255, max(0, p_b + amount * (p_b - p_blur))))
 
     return {"result": result, "explanation": {
-        "title": "Sharpness (Ketajaman) — Unsharp Masking",
+        "title": "Sharpness (Ketajaman) â€” Unsharp Masking",
         "formula": r"g(x,y) = \text{clip}(f(x,y) + a \cdot (f(x,y) - \text{Blur}(f(x,y))),\;0,\;255)",
         "description": (
             f"Unsharp Masking dengan amount={amount}. "
@@ -396,10 +550,10 @@ def op_sharpness(img, params):
         "steps": [
             "1. Buat blur: B = GaussianBlur(f, sigma=2)",
             f"   Amount a = {amount}",
-            "2. Hitung detail mask: D = f − B",
-            "3. Tambah ke asli: g = f + a × D",
+            "2. Hitung detail mask: D = f âˆ’ B",
+            "3. Tambah ke asli: g = f + a Ã— D",
             f"4. Piksel [10,10]: f={p_b}, B={p_blur}, D={p_b-p_blur}",
-            f"   g = {p_b} + {amount}×{p_b-p_blur} = {p_sharp}",
+            f"   g = {p_b} + {amount}Ã—{p_b-p_blur} = {p_sharp}",
         ],
         "pixel_before": get_pixel_matrix(img),
         "pixel_after": get_pixel_matrix(result),
@@ -425,20 +579,20 @@ def op_gaussian_blur(img, params):
     kernel_show = [[round(float(v), 4) for v in row] for row in kernel_2d_norm]
 
     return {"result": result, "explanation": {
-        "title": f"Gaussian Blur (σ={sigma})",
+        "title": f"Gaussian Blur (Ïƒ={sigma})",
         "formula": r"G(x,y) = \frac{1}{2\pi\sigma^2} e^{-\frac{x^2+y^2}{2\sigma^2}}",
         "description": (
-            f"Gaussian Blur dengan σ={sigma}, kernel {ksize}×{ksize}. "
+            f"Gaussian Blur dengan Ïƒ={sigma}, kernel {ksize}Ã—{ksize}. "
             "Piksel lebih dekat ke pusat mendapat bobot lebih besar (distribusi normal). "
             "Lebih halus dari Mean Filter karena tidak memotong frekuensi secara tiba-tiba."
         ),
         "kernel": kernel_show[:min(5, ksize)],
         "steps": [
-            f"σ = {sigma}, ksize = {ksize}×{ksize}",
-            f"G(0,0) = 1/(2π×{sigma}²) × e^0 → bobot terbesar di pusat",
-            f"G(1,0) ≈ e^(-1/(2×{sigma}²)) × bobot pusat",
+            f"Ïƒ = {sigma}, ksize = {ksize}Ã—{ksize}",
+            f"G(0,0) = 1/(2Ï€Ã—{sigma}Â²) Ã— e^0 â†’ bobot terbesar di pusat",
+            f"G(1,0) â‰ˆ e^(-1/(2Ã—{sigma}Â²)) Ã— bobot pusat",
             "Total semua bobot = 1.0 (normalized)",
-            "Setiap piksel = Σ(kernel × tetangga)",
+            "Setiap piksel = Î£(kernel Ã— tetangga)",
         ],
         "pixel_before": get_pixel_matrix(img),
         "pixel_after": get_pixel_matrix(result),
@@ -475,11 +629,11 @@ def op_opacity(img, params):
             "Di OpenCV: blending dengan warna solid karena tidak ada channel alpha di JPEG."
         ),
         "steps": [
-            f"α = {opacity_val}/100 = {alpha}",
+            f"Î± = {opacity_val}/100 = {alpha}",
             f"Background B = {'putih (255,255,255)' if bg_color=='white' else 'hitam (0,0,0)'}",
             f"Piksel [0,0] asli: {p}",
-            f"g = {alpha}×{p} + {1-alpha:.2f}×{bg_p}",
-            f"g ≈ {p_out}",
+            f"g = {alpha}Ã—{p} + {1-alpha:.2f}Ã—{bg_p}",
+            f"g â‰ˆ {p_out}",
         ],
         "pixel_before": get_pixel_matrix(img),
         "pixel_after": get_pixel_matrix(result),
@@ -488,9 +642,255 @@ def op_opacity(img, params):
     }}
 
 
-# ══════════════════════════════════════════════════════
+def op_morphology(img, params):
+    mode = params.get("mode", "dilation")
+    source = params.get("source", "binary")
+    ksize = max(3, int(params.get("ksize", 5)))
+    if ksize % 2 == 0:
+        ksize += 1
+    iterations = max(1, min(int(params.get("iterations", 1)), 8))
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (ksize, ksize))
+
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    if source == "binary":
+        _, base = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    elif source == "grayscale":
+        base = gray
+    else:
+        base = img
+
+    if mode == "erosion":
+        result = cv2.erode(base, kernel, iterations=iterations)
+        formula = "A eroded by B"
+        title = "Erosion"
+    elif mode == "opening":
+        result = cv2.morphologyEx(base, cv2.MORPH_OPEN, kernel, iterations=iterations)
+        formula = "(A eroded by B) dilated by B"
+        title = "Opening"
+    elif mode == "closing":
+        result = cv2.morphologyEx(base, cv2.MORPH_CLOSE, kernel, iterations=iterations)
+        formula = "(A dilated by B) eroded by B"
+        title = "Closing"
+    elif mode == "boundary":
+        eroded = cv2.erode(base, kernel, iterations=iterations)
+        result = cv2.subtract(base, eroded)
+        formula = "Boundary(A) = A - erosion(A)"
+        title = "Boundary Extraction"
+    else:
+        result = cv2.dilate(base, kernel, iterations=iterations)
+        formula = "A dilated by B"
+        title = "Dilation"
+
+    result_bgr = cv2.cvtColor(result, cv2.COLOR_GRAY2BGR) if len(result.shape) == 2 else result
+    return {"result": result_bgr, "explanation": {
+        "title": title,
+        "formula": formula,
+        "description": f"Morphology memakai structuring element {ksize}x{ksize} selama {iterations} iterasi.",
+        "steps": [
+            f"Source: {source}",
+            f"Mode: {mode}",
+            f"Kernel: rectangle {ksize}x{ksize}",
+            f"Iterations: {iterations}",
+        ],
+        "kernel": kernel.tolist(),
+        "pixel_before": get_pixel_matrix(img),
+        "pixel_after": get_pixel_matrix(result_bgr),
+        "histogram_before": get_histogram(img),
+        "histogram_after": get_histogram(result_bgr),
+    }}
+
+
+def zhang_suen_thinning(binary: np.ndarray, max_iterations: int = 80) -> np.ndarray:
+    img_bin = (binary > 0).astype(np.uint8)
+    changed = True
+    iteration = 0
+    while changed and iteration < max_iterations:
+        changed = False
+        to_remove = []
+        rows, cols = img_bin.shape
+        for i in range(1, rows - 1):
+            for j in range(1, cols - 1):
+                if img_bin[i, j] != 1:
+                    continue
+                p2 = img_bin[i - 1, j]
+                p3 = img_bin[i - 1, j + 1]
+                p4 = img_bin[i, j + 1]
+                p5 = img_bin[i + 1, j + 1]
+                p6 = img_bin[i + 1, j]
+                p7 = img_bin[i + 1, j - 1]
+                p8 = img_bin[i, j - 1]
+                p9 = img_bin[i - 1, j - 1]
+                neighbors = [p2, p3, p4, p5, p6, p7, p8, p9]
+                n = sum(neighbors)
+                transitions = sum((neighbors[k] == 0 and neighbors[(k + 1) % 8] == 1) for k in range(8))
+                if 2 <= n <= 6 and transitions == 1 and p2 * p4 * p6 == 0 and p4 * p6 * p8 == 0:
+                    to_remove.append((i, j))
+        if to_remove:
+            changed = True
+            for i, j in to_remove:
+                img_bin[i, j] = 0
+
+        to_remove = []
+        for i in range(1, rows - 1):
+            for j in range(1, cols - 1):
+                if img_bin[i, j] != 1:
+                    continue
+                p2 = img_bin[i - 1, j]
+                p3 = img_bin[i - 1, j + 1]
+                p4 = img_bin[i, j + 1]
+                p5 = img_bin[i + 1, j + 1]
+                p6 = img_bin[i + 1, j]
+                p7 = img_bin[i + 1, j - 1]
+                p8 = img_bin[i, j - 1]
+                p9 = img_bin[i - 1, j - 1]
+                neighbors = [p2, p3, p4, p5, p6, p7, p8, p9]
+                n = sum(neighbors)
+                transitions = sum((neighbors[k] == 0 and neighbors[(k + 1) % 8] == 1) for k in range(8))
+                if 2 <= n <= 6 and transitions == 1 and p2 * p4 * p8 == 0 and p2 * p6 * p8 == 0:
+                    to_remove.append((i, j))
+        if to_remove:
+            changed = True
+            for i, j in to_remove:
+                img_bin[i, j] = 0
+        iteration += 1
+    return (img_bin * 255).astype(np.uint8)
+
+
+def op_zhang_suen(img, params):
+    invert = bool(params.get("invert", False))
+    max_dim = int(params.get("max_dim", 900))
+    max_iterations = int(params.get("max_iterations", 80))
+    h, w = img.shape[:2]
+    scale = min(1.0, max_dim / max(h, w))
+    work = cv2.resize(img, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA) if scale < 1.0 else img.copy()
+    gray = cv2.cvtColor(work, cv2.COLOR_BGR2GRAY)
+    thresh_type = cv2.THRESH_BINARY_INV if invert else cv2.THRESH_BINARY
+    _, binary = cv2.threshold(gray, 0, 255, thresh_type + cv2.THRESH_OTSU)
+    skeleton = zhang_suen_thinning(binary, max_iterations=max_iterations)
+    result = cv2.cvtColor(skeleton, cv2.COLOR_GRAY2BGR)
+    return {"result": result, "explanation": {
+        "title": "Zhang-Suen Thinning",
+        "formula": "Two sub-iterations remove safe boundary pixels until stable",
+        "description": "Penipisan objek menjadi skeleton satu piksel tanpa menghilangkan struktur utama.",
+        "steps": [
+            "Konversi grayscale",
+            "Binarisasi Otsu",
+            "Sub-iterasi 1 menghapus piksel batas yang memenuhi syarat",
+            "Sub-iterasi 2 menghapus piksel batas arah komplementer",
+            f"Berhenti saat stabil atau mencapai {max_iterations} iterasi",
+        ],
+        "pixel_before": get_pixel_matrix(img),
+        "pixel_after": get_pixel_matrix(result),
+        "histogram_before": get_histogram(img),
+        "histogram_after": get_histogram(result),
+    }}
+
+
+def op_edge_detection(img, params):
+    method = params.get("method", "canny")
+    blur_size = max(1, int(params.get("blur", 3)))
+    if blur_size % 2 == 0:
+        blur_size += 1
+    low = int(params.get("low", 60))
+    high = int(params.get("high", 160))
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    smooth = cv2.GaussianBlur(gray, (blur_size, blur_size), 0) if blur_size > 1 else gray
+
+    if method == "sobel":
+        gx = cv2.Sobel(smooth, cv2.CV_64F, 1, 0, ksize=3)
+        gy = cv2.Sobel(smooth, cv2.CV_64F, 0, 1, ksize=3)
+        edge = cv2.convertScaleAbs(cv2.magnitude(gx, gy))
+        formula = "G = sqrt(Gx^2 + Gy^2)"
+    elif method == "prewitt":
+        kx = np.array([[-1, 0, 1], [-1, 0, 1], [-1, 0, 1]], dtype=np.float32)
+        ky = np.array([[1, 1, 1], [0, 0, 0], [-1, -1, -1]], dtype=np.float32)
+        gx = cv2.filter2D(smooth, cv2.CV_32F, kx)
+        gy = cv2.filter2D(smooth, cv2.CV_32F, ky)
+        edge = cv2.convertScaleAbs(cv2.magnitude(gx, gy))
+        formula = "Prewitt gradient magnitude"
+    elif method == "roberts":
+        kx = np.array([[1, 0], [0, -1]], dtype=np.float32)
+        ky = np.array([[0, 1], [-1, 0]], dtype=np.float32)
+        gx = cv2.filter2D(smooth, cv2.CV_32F, kx)
+        gy = cv2.filter2D(smooth, cv2.CV_32F, ky)
+        edge = cv2.convertScaleAbs(cv2.magnitude(gx, gy))
+        formula = "Roberts diagonal gradient"
+    elif method == "laplacian":
+        edge = cv2.convertScaleAbs(cv2.Laplacian(smooth, cv2.CV_64F))
+        formula = "Laplacian second derivative"
+    else:
+        edge = cv2.Canny(smooth, low, high)
+        formula = f"Canny hysteresis threshold: low={low}, high={high}"
+
+    result = cv2.cvtColor(edge, cv2.COLOR_GRAY2BGR)
+    return {"result": result, "explanation": {
+        "title": f"Edge Detection - {method.title()}",
+        "formula": formula,
+        "description": "Deteksi tepi menandai perubahan intensitas yang tajam sebagai batas region atau objek.",
+        "steps": [
+            "Konversi ke grayscale",
+            f"Smoothing Gaussian blur {blur_size}x{blur_size}",
+            f"Metode: {method}",
+        ],
+        "pixel_before": get_pixel_matrix(img),
+        "pixel_after": get_pixel_matrix(result),
+        "histogram_before": get_histogram(img),
+        "histogram_after": get_histogram(result),
+    }}
+
+
+def op_segmentation(img, params):
+    mode = params.get("mode", "otsu_blur")
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+    if mode == "global_binary":
+        threshold = int(params.get("threshold", 127))
+        _, segmented = cv2.threshold(gray, threshold, 255, cv2.THRESH_BINARY)
+        result = cv2.cvtColor(segmented, cv2.COLOR_GRAY2BGR)
+        formula = f"g=255 if f >= {threshold}, else 0"
+    elif mode == "adaptive_gaussian":
+        block_size = max(3, int(params.get("block_size", 21)))
+        if block_size % 2 == 0:
+            block_size += 1
+        c_value = int(params.get("c", 5))
+        segmented = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, block_size, c_value)
+        result = cv2.cvtColor(segmented, cv2.COLOR_GRAY2BGR)
+        formula = f"local threshold = weighted mean({block_size}x{block_size}) - {c_value}"
+    elif mode == "kmeans":
+        clusters = max(2, min(int(params.get("clusters", 4)), 8))
+        data = img.reshape((-1, 3)).astype(np.float32)
+        criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 20, 1.0)
+        _, labels, centers = cv2.kmeans(data, clusters, None, criteria, 3, cv2.KMEANS_PP_CENTERS)
+        centers = np.uint8(centers)
+        result = centers[labels.flatten()].reshape(img.shape)
+        formula = f"K-Means clustering with K={clusters}"
+    else:
+        blur_size = max(3, int(params.get("blur", 5)))
+        if blur_size % 2 == 0:
+            blur_size += 1
+        blurred = cv2.GaussianBlur(gray, (blur_size, blur_size), 0)
+        otsu_value, segmented = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        result = cv2.cvtColor(segmented, cv2.COLOR_GRAY2BGR)
+        formula = f"Otsu threshold T={round(float(otsu_value), 2)} after Gaussian blur {blur_size}x{blur_size}"
+
+    return {"result": result, "explanation": {
+        "title": "Segmentasi Citra",
+        "formula": formula,
+        "description": "Segmentasi memisahkan citra menjadi region berdasarkan intensitas atau kemiripan warna.",
+        "steps": [
+            f"Mode: {mode}",
+            "Output menandai region/cluster yang memenuhi kriteria segmentasi",
+        ],
+        "pixel_before": get_pixel_matrix(img),
+        "pixel_after": get_pixel_matrix(result),
+        "histogram_before": get_histogram(img),
+        "histogram_after": get_histogram(result),
+    }}
+
+
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 # OPERATIONS ROUTER
-# ══════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 OPERATIONS = {
     "grayscale":        op_grayscale,
@@ -515,6 +915,10 @@ OPERATIONS = {
     "median_filter":    op_median_filter,
     "sobel":            op_sobel,
     "enhance_pipeline": op_enhance_pipeline,
+    "morphology":       op_morphology,
+    "zhang_suen":       op_zhang_suen,
+    "edge_detection":   op_edge_detection,
+    "segmentation":     op_segmentation,
 }
 
 def run_segmentation_pipeline(original: np.ndarray, rect: dict = None, work_max_dim: int = 640) -> dict:
@@ -534,7 +938,7 @@ def run_segmentation_pipeline(original: np.ndarray, rect: dict = None, work_max_
 
     stages = []
 
-    # ── TAHAP 1: Bilateral Filtering ──────────────────────────────────
+    # â”€â”€ TAHAP 1: Bilateral Filtering â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     denoised = cv2.bilateralFilter(work, d=9, sigmaColor=75, sigmaSpace=75)
     stages.append({
         "id": "bilateral", "order": 1,
@@ -544,14 +948,14 @@ def run_segmentation_pipeline(original: np.ndarray, rect: dict = None, work_max_
         "math_concept": (
             "Menggabungkan dua kernel Gaussian: kernel spasial g_s (berdasarkan jarak piksel) dan kernel "
             "range f_r (berdasarkan perbedaan intensitas). Piksel tetangga yang nilainya jauh berbeda "
-            "(kemungkinan besar tepi objek) diberi bobot kecil — sehingga noise berkurang tanpa mengaburkan tepi, "
+            "(kemungkinan besar tepi objek) diberi bobot kecil â€” sehingga noise berkurang tanpa mengaburkan tepi, "
             "berbeda dari Gaussian Blur biasa yang mengaburkan segalanya secara merata."
         ),
         "description": "Parameter: d=9 (diameter neighborhood), sigmaColor=75, sigmaSpace=75.",
         "image": encode_stage_preview(denoised),
     })
 
-    # ── TAHAP 2: CLAHE pada channel L (Lab) ───────────────────────────
+    # â”€â”€ TAHAP 2: CLAHE pada channel L (Lab) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     lab = cv2.cvtColor(denoised, cv2.COLOR_BGR2LAB)
     l_ch, a_ch, b_ch_lab = cv2.split(lab)
     clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
@@ -564,7 +968,7 @@ def run_segmentation_pipeline(original: np.ndarray, rect: dict = None, work_max_
         "formula": r"L'(x,y) = \mathrm{clip}_{T}\big(H_{tile}(L(x,y))\big),\quad tile = 8\times 8",
         "math_concept": (
             "Citra dikonversi ke ruang warna Lab agar kecerahan (L) terpisah dari informasi warna (a,b). "
-            "CLAHE membagi channel L menjadi blok 8×8, melakukan ekualisasi histogram per-blok dengan batas "
+            "CLAHE membagi channel L menjadi blok 8Ã—8, melakukan ekualisasi histogram per-blok dengan batas "
             "klip (clipLimit=3.0) untuk mencegah over-amplifikasi noise, lalu interpolasi bilinear antar blok "
             "agar transisi mulus. Channel warna (a,b) tidak disentuh sehingga warna asli tetap akurat."
         ),
@@ -572,7 +976,7 @@ def run_segmentation_pipeline(original: np.ndarray, rect: dict = None, work_max_
         "image": encode_stage_preview(enhanced),
     })
 
-    # ── TAHAP 3: GrabCut (segmentasi awal) ────────────────────────────
+    # â”€â”€ TAHAP 3: GrabCut (segmentasi awal) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     mask = np.zeros((wh, ww), np.uint8)
     bgd_model = np.zeros((1, 65), np.float64)
     fgd_model = np.zeros((1, 65), np.float64)
@@ -601,7 +1005,7 @@ def run_segmentation_pipeline(original: np.ndarray, rect: dict = None, work_max_
         "image": encode_stage_preview(grabcut_mask),
     })
 
-    # ── TAHAP 4: Morphological Opening ─────────────────────────────────
+    # â”€â”€ TAHAP 4: Morphological Opening â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     k_open = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
     opened = cv2.morphologyEx(grabcut_mask, cv2.MORPH_OPEN, k_open, iterations=2)
     stages.append({
@@ -611,14 +1015,14 @@ def run_segmentation_pipeline(original: np.ndarray, rect: dict = None, work_max_
         "formula": r"A \circ B = (A \ominus B) \oplus B",
         "math_concept": (
             "Operasi Erosi (mengikis tepi region) diikuti Dilasi (melebarkan kembali), menggunakan elemen "
-            "struktur elips 5×5. Objek yang lebih sempit dari elemen struktur akan hilang total, sedangkan "
+            "struktur elips 5Ã—5. Objek yang lebih sempit dari elemen struktur akan hilang total, sedangkan "
             "objek utama yang cukup besar bentuknya tetap dipertahankan."
         ),
-        "description": "Structuring element: ellipse 5×5, 2 iterasi.",
+        "description": "Structuring element: ellipse 5Ã—5, 2 iterasi.",
         "image": encode_stage_preview(opened),
     })
 
-    # ── TAHAP 5: Morphological Closing ─────────────────────────────────
+    # â”€â”€ TAHAP 5: Morphological Closing â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     k_close = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (9, 9))
     closed = cv2.morphologyEx(opened, cv2.MORPH_CLOSE, k_close, iterations=2)
     stages.append({
@@ -627,15 +1031,15 @@ def run_segmentation_pipeline(original: np.ndarray, rect: dict = None, work_max_
         "objective": "Menutup lubang-lubang kecil di dalam area objek agar mask menjadi solid/utuh.",
         "formula": r"A \bullet B = (A \oplus B) \ominus B",
         "math_concept": (
-            "Kebalikan dari Opening: Dilasi diikuti Erosi, menggunakan elemen struktur elips 9×9 (lebih besar "
+            "Kebalikan dari Opening: Dilasi diikuti Erosi, menggunakan elemen struktur elips 9Ã—9 (lebih besar "
             "agar mampu menutup celah yang lebih lebar). Lubang atau celah yang lebih kecil dari elemen "
             "struktur akan tertutup tanpa mengubah ukuran objek secara keseluruhan."
         ),
-        "description": "Structuring element: ellipse 9×9, 2 iterasi.",
+        "description": "Structuring element: ellipse 9Ã—9, 2 iterasi.",
         "image": encode_stage_preview(closed),
     })
 
-    # ── TAHAP 6: Distance Transform + Watershed ───────────────────────
+    # â”€â”€ TAHAP 6: Distance Transform + Watershed â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     dist = cv2.distanceTransform(closed, cv2.DIST_L2, 5)
     dist_norm = cv2.normalize(dist, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
     try:
@@ -667,7 +1071,7 @@ def run_segmentation_pipeline(original: np.ndarray, rect: dict = None, work_max_
         "secondary_image": encode_stage_preview(watershed_mask),
     })
 
-    # ── TAHAP 7: Sobel + Laplacian Edge Fusion ────────────────────────
+    # â”€â”€ TAHAP 7: Sobel + Laplacian Edge Fusion â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     gray_e = cv2.cvtColor(enhanced, cv2.COLOR_BGR2GRAY)
     sx = cv2.Sobel(gray_e, cv2.CV_64F, 1, 0, ksize=3)
     sy = cv2.Sobel(gray_e, cv2.CV_64F, 0, 1, ksize=3)
@@ -694,7 +1098,7 @@ def run_segmentation_pipeline(original: np.ndarray, rect: dict = None, work_max_
         "image": encode_stage_preview(edge_fused),
     })
 
-    # ── TAHAP 8: Contour Optimization + Connected Component Analysis ──
+    # â”€â”€ TAHAP 8: Contour Optimization + Connected Component Analysis â”€â”€
     contours, _ = cv2.findContours(refined_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     contour_mask = np.zeros((wh, ww), np.uint8)
     if contours:
@@ -725,11 +1129,11 @@ def run_segmentation_pipeline(original: np.ndarray, rect: dict = None, work_max_
             "jitter piksel pada garis tepi. Connected Component Analysis melabeli setiap region terpisah "
             "(8-connectivity) dan membuang region yang luasnya di bawah ambang batas (dianggap noise/fragmen)."
         ),
-        "description": f"{max(0,num_labels-1)} komponen ditemukan, {kept} dipertahankan (area ≥ 0.5% dari citra).",
+        "description": f"{max(0,num_labels-1)} komponen ditemukan, {kept} dipertahankan (area â‰¥ 0.5% dari citra).",
         "image": encode_stage_preview(cca_mask),
     })
 
-    # ── TAHAP 9: Alpha Matting + Gaussian Feathering ──────────────────
+    # â”€â”€ TAHAP 9: Alpha Matting + Gaussian Feathering â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     sure_fg2 = cv2.erode(cca_mask, k_open, iterations=2)
     sure_bg2 = cv2.bitwise_not(cv2.dilate(cca_mask, k_open, iterations=3))
     dist_in  = cv2.distanceTransform(cca_mask, cv2.DIST_L2, 5)
@@ -749,14 +1153,14 @@ def run_segmentation_pipeline(original: np.ndarray, rect: dict = None, work_max_
         "formula": r"I = \alpha F + (1-\alpha) B, \quad \alpha(x,y) = \mathrm{blur}\Big(\min\big(\tfrac{D_{in}}{d},1\big)\Big)",
         "math_concept": (
             "Model compositing alpha matting klasik: tiap piksel adalah campuran Foreground (F) dan Background "
-            "(B) sesuai nilai alpha ∈ [0,1]. Alpha dibangun dari Distance Transform (jarak ke tepi mask, "
+            "(B) sesuai nilai alpha âˆˆ [0,1]. Alpha dibangun dari Distance Transform (jarak ke tepi mask, "
             "dinormalisasi dalam band 8px) lalu dihaluskan dengan Gaussian Blur agar transisi lembut."
         ),
-        "description": "Band transisi 8px, Gaussian kernel 9×9 σ=2.0.",
+        "description": "Band transisi 8px, Gaussian kernel 9Ã—9 Ïƒ=2.0.",
         "image": encode_stage_preview(alpha_final),
     })
 
-    # ── Upscale alpha ke resolusi asli & komposit hasil akhir ─────────
+    # â”€â”€ Upscale alpha ke resolusi asli & komposit hasil akhir â”€â”€â”€â”€â”€â”€â”€â”€â”€
     alpha_full = cv2.resize(alpha_final, (ow, oh), interpolation=cv2.INTER_LINEAR)
     b_ch, g_ch, r_ch = cv2.split(original)
     result_rgba = cv2.merge([b_ch, g_ch, r_ch, alpha_full])
@@ -779,8 +1183,8 @@ def run_segmentation_pipeline(original: np.ndarray, rect: dict = None, work_max_
         "histogram_before": hist_before,
         "histogram_after": hist_after,
         "coverage_pct": coverage_pct,
-        "work_resolution": f"{ww}×{wh}",
-        "original_resolution": f"{ow}×{oh}",
+        "work_resolution": f"{ww}Ã—{wh}",
+        "original_resolution": f"{ow}Ã—{oh}",
     }
 
 
@@ -789,254 +1193,394 @@ def order_points(pts: np.ndarray) -> np.ndarray:
     """Urutkan 4 titik sudut menjadi [top-left, top-right, bottom-right, bottom-left]."""
     rect = np.zeros((4, 2), dtype="float32")
     s = pts.sum(axis=1)
-    rect[0] = pts[np.argmin(s)]          # top-left  → jumlah x+y terkecil
-    rect[2] = pts[np.argmax(s)]          # bottom-right → jumlah x+y terbesar
+    rect[0] = pts[np.argmin(s)]          # top-left  â†’ jumlah x+y terkecil
+    rect[2] = pts[np.argmax(s)]          # bottom-right â†’ jumlah x+y terbesar
     diff = np.diff(pts, axis=1)
-    rect[1] = pts[np.argmin(diff)]       # top-right → selisih x-y terkecil
-    rect[3] = pts[np.argmax(diff)]       # bottom-left → selisih x-y terbesar
+    rect[1] = pts[np.argmin(diff)]       # top-right â†’ selisih x-y terkecil
+    rect[3] = pts[np.argmax(diff)]       # bottom-left â†’ selisih x-y terbesar
     return rect
 
 
-def four_point_transform(image: np.ndarray, pts: np.ndarray):
-    """Warp region 4-titik menjadi tampilan top-down rectangular (deskew + crop)."""
+def four_point_transform(image: np.ndarray, pts: np.ndarray, target_aspect: float | None = None):
+    """Warp a 4-point document region into a top-down rectangle."""
     rect = order_points(pts)
     (tl, tr, br, bl) = rect
 
-    width_a  = np.linalg.norm(br - bl)
-    width_b  = np.linalg.norm(tr - tl)
-    max_w    = max(int(width_a), int(width_b), 10)
+    width_a = np.linalg.norm(br - bl)
+    width_b = np.linalg.norm(tr - tl)
+    max_w = max(int(width_a), int(width_b), 10)
 
     height_a = np.linalg.norm(tr - br)
     height_b = np.linalg.norm(tl - bl)
-    max_h    = max(int(height_a), int(height_b), 10)
+    max_h = max(int(height_a), int(height_b), 10)
 
-    dst = np.array([[0, 0], [max_w - 1, 0], [max_w - 1, max_h - 1], [0, max_h - 1]], dtype="float32")
-    M = cv2.getPerspectiveTransform(rect, dst)
-    warped = cv2.warpPerspective(image, M, (max_w, max_h))
-    return warped, M, max_w, max_h
+    if target_aspect and target_aspect > 0:
+        aspect = target_aspect if max_w >= max_h else 1.0 / target_aspect
+        if max_w / max_h > aspect:
+            max_h = max(10, int(max_w / aspect))
+        else:
+            max_w = max(10, int(max_h * aspect))
+
+    dst = np.array(
+        [[0, 0], [max_w - 1, 0], [max_w - 1, max_h - 1], [0, max_h - 1]],
+        dtype="float32",
+    )
+    matrix = cv2.getPerspectiveTransform(rect, dst)
+    warped = cv2.warpPerspective(image, matrix, (max_w, max_h))
+    return warped, matrix, max_w, max_h
 
 
-def find_document_quad(work: np.ndarray):
-    """
-    Deteksi 4 sudut dokumen pada citra kerja (work resolution).
-    Mengembalikan (quad_4pts atau None, visualisasi_kontur, edge_map, blur_map).
-    """
+def get_paper_aspect(paper_size: str) -> float | None:
+    if paper_size == "a4":
+        return 1.41421356237
+    if paper_size == "letter":
+        return 11 / 8.5
+    if paper_size == "id":
+        return 85.6 / 53.98
+    return None
+
+
+def quad_aspect_ratio(pts: np.ndarray) -> float:
+    rect = order_points(pts.astype(np.float32))
+    width = max(np.linalg.norm(rect[2] - rect[3]), np.linalg.norm(rect[1] - rect[0]))
+    height = max(np.linalg.norm(rect[1] - rect[2]), np.linalg.norm(rect[0] - rect[3]))
+    if min(width, height) <= 0:
+        return 0.0
+    return max(width, height) / min(width, height)
+
+
+def remove_tiny_dark_components(binary_white_bg: np.ndarray, min_area: int = 8) -> np.ndarray:
+    """Remove isolated black specks from a black-text-on-white binary document."""
+    inverted = cv2.bitwise_not(binary_white_bg)
+    count, labels, stats, _ = cv2.connectedComponentsWithStats(inverted, connectivity=8)
+    cleaned = inverted.copy()
+    for label in range(1, count):
+        area = int(stats[label, cv2.CC_STAT_AREA])
+        width = int(stats[label, cv2.CC_STAT_WIDTH])
+        height = int(stats[label, cv2.CC_STAT_HEIGHT])
+        if area <= min_area or (width <= 2 and height <= 2):
+            cleaned[labels == label] = 0
+    return cv2.bitwise_not(cleaned)
+
+
+def find_document_quad(work: np.ndarray, auto_crop: bool = True):
+    """Find the strongest 4-corner document candidate in a resized work image."""
     wh, ww = work.shape[:2]
     gray = cv2.cvtColor(work, cv2.COLOR_BGR2GRAY)
     blur = cv2.GaussianBlur(gray, (5, 5), 0)
-    edges = cv2.Canny(blur, 50, 150)
-    edges_dilated = cv2.dilate(edges, np.ones((5, 5), np.uint8), iterations=2)
 
-    contours, _ = cv2.findContours(edges_dilated, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
-    contours = sorted(contours, key=cv2.contourArea, reverse=True)[:6]
+    if not auto_crop:
+        edges = cv2.Canny(blur, 50, 150)
+        contour_vis = work.copy()
+        cv2.putText(
+            contour_vis,
+            "Auto-crop off - full frame",
+            (10, wh - 16),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.5,
+            (80, 220, 120),
+            1,
+            cv2.LINE_AA,
+        )
+        return None, contour_vis, edges, blur, 0.0
+
+    median = float(np.median(blur))
+    lower = int(max(25, 0.66 * median))
+    upper = int(min(220, 1.33 * median + 35))
+    edges = cv2.Canny(blur, lower, upper)
+    close_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (7, 7))
+    edge_map = cv2.morphologyEx(edges, cv2.MORPH_CLOSE, close_kernel, iterations=2)
+    edge_map = cv2.dilate(edge_map, np.ones((3, 3), np.uint8), iterations=1)
+
+    contours, _ = cv2.findContours(edge_map, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    contours = sorted(contours, key=cv2.contourArea, reverse=True)[:12]
 
     quad = None
-    for c in contours:
-        peri = cv2.arcLength(c, True)
-        approx = cv2.approxPolyDP(c, 0.02 * peri, True)
-        if len(approx) == 4 and cv2.contourArea(approx) > 0.15 * wh * ww:
-            quad = approx.reshape(4, 2).astype(np.float32)
-            break
+    best_score = 0.0
+    for contour in contours:
+        area = cv2.contourArea(contour)
+        if area < 0.08 * wh * ww:
+            continue
+        perimeter = cv2.arcLength(contour, True)
+        for epsilon in (0.015, 0.02, 0.03, 0.04):
+            approx = cv2.approxPolyDP(contour, epsilon * perimeter, True)
+            if len(approx) != 4 or not cv2.isContourConvex(approx):
+                continue
+            pts = approx.reshape(4, 2).astype(np.float32)
+            rect = order_points(pts)
+            width = max(np.linalg.norm(rect[2] - rect[3]), np.linalg.norm(rect[1] - rect[0]))
+            height = max(np.linalg.norm(rect[1] - rect[2]), np.linalg.norm(rect[0] - rect[3]))
+            if width < 40 or height < 40:
+                continue
+            area_ratio = area / float(wh * ww)
+            rectangularity = min(1.0, area / max(width * height, 1.0))
+            edge_margin = min(
+                rect[:, 0].min(),
+                rect[:, 1].min(),
+                ww - rect[:, 0].max(),
+                wh - rect[:, 1].max(),
+            )
+            margin_bonus = 1.0 if edge_margin > -8 else 0.7
+            score = area_ratio * 0.65 + rectangularity * 0.30 + margin_bonus * 0.05
+            if score > best_score:
+                best_score = score
+                quad = pts
 
-    # Fallback tier 2: pakai minAreaRect dari kontur terbesar jika tidak ada quad sempurna
-    if quad is None and contours and cv2.contourArea(contours[0]) > 0.12 * wh * ww:
+    if quad is None and contours and cv2.contourArea(contours[0]) > 0.10 * wh * ww:
         rect = cv2.minAreaRect(contours[0])
-        quad = cv2.boxPoints(rect).astype(np.float32)
+        candidate = cv2.boxPoints(rect).astype(np.float32)
+        box_area = cv2.contourArea(candidate)
+        if box_area > 0.10 * wh * ww:
+            quad = candidate
+            best_score = min(0.75, box_area / float(wh * ww))
 
     contour_vis = work.copy()
-    if quad is not None:
+    safe_quad = quad is not None and best_score >= 0.80
+
+    if quad is not None and safe_quad:
         cv2.drawContours(contour_vis, [quad.astype(int)], -1, (80, 220, 120), 3)
-        for (x, y) in quad:
+        for x, y in quad:
             cv2.circle(contour_vis, (int(x), int(y)), 6, (80, 220, 120), -1)
+    elif quad is not None:
+        cv2.drawContours(contour_vis, [quad.astype(int)], -1, (80, 180, 255), 2)
+        cv2.putText(
+            contour_vis,
+            "Weak document geometry - full frame used",
+            (10, wh - 16),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.5,
+            (80, 180, 255),
+            1,
+            cv2.LINE_AA,
+        )
+        quad = None
     else:
-        cv2.putText(contour_vis, "Tepi dokumen tidak terdeteksi - pakai frame penuh",
-                    (10, wh - 16), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (80, 220, 120), 1, cv2.LINE_AA)
+        cv2.putText(
+            contour_vis,
+            "Document edge not detected - full frame used",
+            (10, wh - 16),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.5,
+            (80, 220, 120),
+            1,
+            cv2.LINE_AA,
+        )
 
-    return quad, contour_vis, edges_dilated, blur
+    return quad, contour_vis, edge_map, blur, round(float(best_score), 3)
 
 
-def run_document_scan_pipeline(original: np.ndarray, work_max_dim: int = 900) -> dict:
-    """
-    Pipeline restorasi dokumen/foto bergaya CamScanner. Mendeteksi tepi dokumen,
-    meluruskan perspektif, menghapus bayangan, mengurangi noise, mempertajam detail,
-    lalu menghasilkan 3 mode output: grayscale, hitam-putih (binerisasi), dan color enhanced.
-    """
+def run_document_scan_pipeline(original: np.ndarray, options: dict | None = None, work_max_dim: int = 1100) -> dict:
+    """Document scanner pipeline with auto-crop, deskew, cleanup, and scan modes."""
+    options = options or {}
+    preset = str(options.get("preset", "document"))
+    enhance = str(options.get("enhance", "balanced"))
+    auto_crop = bool(options.get("auto_crop", True))
+    paper_size = str(options.get("paper_size", "auto"))
+    output_max = int(options.get("output_max", 1800))
+    output_max = max(900, min(output_max, 2600))
+
+    if preset == "id":
+        paper_size = "id"
+    elif preset == "receipt":
+        paper_size = "auto"
+
+    strength_map = {
+        "soft": {"denoise": 6, "sharp_gray": 1.25, "sharp_color": 1.15, "clahe": 1.6, "block": 31, "c": 8, "speck": 4},
+        "balanced": {"denoise": 9, "sharp_gray": 1.45, "sharp_color": 1.25, "clahe": 2.1, "block": 31, "c": 10, "speck": 7},
+        "strong": {"denoise": 12, "sharp_gray": 1.70, "sharp_color": 1.35, "clahe": 2.8, "block": 35, "c": 12, "speck": 10},
+    }
+    cfg = strength_map.get(enhance, strength_map["balanced"])
+
     oh, ow = original.shape[:2]
     scale = min(1.0, work_max_dim / max(oh, ow))
-    work = cv2.resize(original, (max(1, int(ow * scale)), max(1, int(oh * scale))),
-                       interpolation=cv2.INTER_AREA) if scale < 1.0 else original.copy()
+    work = cv2.resize(
+        original,
+        (max(1, int(ow * scale)), max(1, int(oh * scale))),
+        interpolation=cv2.INTER_AREA,
+    ) if scale < 1.0 else original.copy()
 
     stages = []
+    quad, contour_vis, edge_map, blur, detection_score = find_document_quad(work, auto_crop=auto_crop)
 
-    # ── TAHAP 1: Grayscale + Gaussian Blur ────────────────────────────
-    quad, contour_vis, edges_dilated, blur = find_document_quad(work)
     stages.append({
-        "id": "preprocess", "order": 1,
+        "id": "preprocess",
+        "order": 1,
         "title": "Grayscale + Gaussian Blur",
         "objective": "Menyederhanakan citra ke satu channel dan meredam noise sebelum deteksi tepi.",
-        "formula": r"L=0.299R+0.587G+0.114B,\quad B(x,y)=G_{\sigma}(x,y)*L(x,y)",
-        "math_concept": (
-            "Citra dikonversi ke grayscale agar deteksi tepi tidak terganggu variasi warna, "
-            "lalu di-blur dengan Gaussian 5×5 agar tekstur kertas/noise sensor tidak terdeteksi "
-            "sebagai tepi palsu pada tahap Canny berikutnya."
-        ),
-        "description": "Kernel Gaussian 5×5, σ otomatis dari OpenCV.",
+        "formula": r"L=0.299R+0.587G+0.114B,\quad B=G_{\sigma}*L",
+        "math_concept": "Citra dikonversi ke grayscale agar deteksi tepi tidak terganggu variasi warna. Gaussian blur 5x5 meredam tekstur kertas dan noise kamera sebelum Canny.",
+        "description": "Gaussian kernel 5x5, sigma otomatis dari OpenCV.",
         "image": encode_stage_preview(blur),
     })
 
-    # ── TAHAP 2: Canny Edge Detection + Dilasi ────────────────────────
     stages.append({
-        "id": "edges", "order": 2,
-        "title": "Canny Edge Detection",
-        "objective": "Menemukan garis tepi tajam (batas kertas vs latar belakang/meja).",
-        "formula": r"G=\sqrt{G_x^2+G_y^2},\quad \text{Hysteresis}(G\,|\,T_{low}=50,\,T_{high}=150)",
-        "math_concept": (
-            "Canny menghitung gradien (mirip Sobel), melakukan Non-Maximum Suppression untuk "
-            "menipiskan tepi menjadi 1 piksel, lalu hysteresis thresholding (dua ambang batas) untuk "
-            "menyambung tepi yang kuat dan membuang tepi lemah yang terisolasi. Dilasi 2 iterasi "
-            "menutup celah kecil pada garis tepi yang terputus."
-        ),
-        "description": "Threshold Canny: low=50, high=150. Dilasi kernel 5×5, 2 iterasi.",
-        "image": encode_stage_preview(edges_dilated),
+        "id": "edges",
+        "order": 2,
+        "title": "Adaptive Canny Edge Detection",
+        "objective": "Menemukan batas dokumen secara lebih stabil pada foto terang, gelap, atau kontras rendah.",
+        "formula": r"G=\sqrt{G_x^2+G_y^2},\quad T_{low}=0.66m,\quad T_{high}=1.33m+35",
+        "math_concept": "Ambang Canny dihitung dari median intensitas gambar, sehingga tidak bergantung pada satu nilai tetap. Morphological closing menyambung celah tepi dokumen yang terputus.",
+        "description": "Adaptive threshold Canny + morph close 7x7 + dilate 3x3.",
+        "image": encode_stage_preview(edge_map),
     })
 
-    # ── TAHAP 3: Contour Detection + Deteksi Quad Dokumen ─────────────
     stages.append({
-        "id": "contour", "order": 3,
-        "title": "Contour Detection + Localisasi 4 Sudut",
-        "objective": "Menemukan kontur terbesar berbentuk segiempat yang mewakili batas dokumen.",
-        "formula": r"\epsilon=0.02\times\text{Perimeter}(C),\quad |\text{approxPolyDP}(C,\epsilon)|=4",
-        "math_concept": (
-            "Semua kontur diurutkan berdasarkan luas (terbesar dahulu). approxPolyDP (algoritma "
-            "Douglas-Peucker) menyederhanakan tiap kontur; jika hasilnya tepat 4 titik dengan luas "
-            "signifikan (>15% area citra), itu dianggap sudut dokumen. Jika tidak ditemukan, sistem "
-            "fallback ke minAreaRect (rotated bounding box) dari kontur terbesar."
-        ),
-        "description": f"Dokumen {'terdeteksi' if quad is not None else 'TIDAK terdeteksi — memakai frame penuh'}.",
+        "id": "contour",
+        "order": 3,
+        "title": "Contour Scoring + Corner Detection",
+        "objective": "Memilih kandidat dokumen terbaik berdasarkan luas, bentuk segiempat, dan konsistensi frame.",
+        "formula": r"score=0.65A+0.30R+0.05M",
+        "math_concept": "Kontur besar disederhanakan menjadi poligon. Kandidat empat titik dinilai dari area ratio, rectangularity, dan margin. Jika tidak ada kandidat kuat, sistem fallback ke rotated bounding box.",
+        "description": f"Document detected: {quad is not None}. Detection score: {detection_score}.",
         "image": encode_stage_preview(contour_vis),
     })
 
-    # ── TAHAP 4: Perspective Transform (Deskew + Auto-Crop) ───────────
+    warp_note = "full frame fallback"
     if quad is not None:
-        pts_full = quad / scale  # map titik dari resolusi kerja → resolusi asli
-        warped_color, M, mw, mh = four_point_transform(original, pts_full)
+        pts_full = quad / scale
+        requested_aspect = get_paper_aspect(paper_size)
+        detected_aspect = quad_aspect_ratio(pts_full)
+        target_aspect = requested_aspect
+        if requested_aspect and detected_aspect > 0:
+            aspect_error = abs(detected_aspect - requested_aspect) / requested_aspect
+            if aspect_error > 0.08:
+                target_aspect = None
+                warp_note = f"kept detected aspect ({detected_aspect:.2f}) because {paper_size} would stretch it"
+            else:
+                warp_note = f"normalized to {paper_size} aspect"
+        elif requested_aspect is None:
+            warp_note = "kept detected aspect"
+
+        warped_color, _, mw, mh = four_point_transform(original, pts_full, target_aspect)
         doc_detected = True
     else:
         warped_color, mw, mh = original.copy(), ow, oh
         doc_detected = False
 
-    # Batasi resolusi proses lanjutan agar tetap responsif
-    proc_max = 1600
-    pscale = min(1.0, proc_max / max(mw, mh))
-    if pscale < 1.0:
-        warped_color = cv2.resize(warped_color, (int(mw * pscale), int(mh * pscale)), interpolation=cv2.INTER_AREA)
+    proc_scale = min(1.0, output_max / max(mw, mh))
+    if proc_scale < 1.0:
+        warped_color = cv2.resize(
+            warped_color,
+            (int(mw * proc_scale), int(mh * proc_scale)),
+            interpolation=cv2.INTER_AREA,
+        )
 
     stages.append({
-        "id": "perspective", "order": 4,
-        "title": "Perspective Transform (Deskew + Auto-Crop)",
-        "objective": "Meluruskan kemiringan & sudut pandang dokumen menjadi tampilan tegak lurus dari atas, sekaligus memotong latar belakang.",
-        "formula": r"\begin{pmatrix}x'\\y'\\w'\end{pmatrix}=H\begin{pmatrix}x\\y\\1\end{pmatrix},\quad H=\text{getPerspectiveTransform}(src_4,dst_4)",
-        "math_concept": (
-            "Homography H (matriks 3×3) dihitung dari 4 titik sudut dokumen menuju 4 titik persegi "
-            "panjang tujuan. Transformasi ini memetakan ulang setiap piksel sehingga dokumen yang "
-            "difoto miring/dari sudut tertentu menjadi tampak seperti hasil pindai datar (flatbed scan)."
-        ),
-        "description": f"Output: {mw}×{mh}px (sebelum cap resolusi proses).",
+        "id": "perspective",
+        "order": 4,
+        "title": "Perspective Correction + Auto Crop",
+        "objective": "Meluruskan foto dokumen yang miring agar terlihat seperti hasil scan datar.",
+        "formula": r"p'=Hp,\quad H=\text{getPerspectiveTransform}(src_4,dst_4)",
+        "math_concept": "Homography 3x3 memetakan empat sudut dokumen ke rectangle baru. Ini memperbaiki distorsi perspektif saat dokumen difoto dari sudut miring.",
+        "description": f"Output before cap: {mw}x{mh}px. Paper mode: {paper_size}. Auto-crop: {auto_crop}. {warp_note}.",
         "image": encode_stage_preview(warped_color),
     })
 
     warped_gray = cv2.cvtColor(warped_color, cv2.COLOR_BGR2GRAY)
 
-    # ── TAHAP 5: Shadow Removal / Koreksi Iluminasi ───────────────────
-    bg_estimate = cv2.medianBlur(cv2.dilate(warped_gray, np.ones((7, 7), np.uint8)), 21)
-    diff = 255 - cv2.absdiff(warped_gray, bg_estimate)
-    shadow_removed = cv2.normalize(diff, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
+    bg_kernel = max(31, (min(warped_gray.shape[:2]) // 18) | 1)
+    bg_estimate = cv2.medianBlur(cv2.dilate(warped_gray, np.ones((9, 9), np.uint8)), bg_kernel)
+    shadow_removed = cv2.divide(warped_gray, bg_estimate, scale=255)
+    shadow_removed = cv2.normalize(shadow_removed, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
 
     lab = cv2.cvtColor(warped_color, cv2.COLOR_BGR2LAB)
-    l_ch, a_ch, b_ch_lab = cv2.split(lab)
-    l_corrected = cv2.normalize(
-        cv2.addWeighted(l_ch, 1.0, cv2.medianBlur(cv2.dilate(l_ch, np.ones((7, 7), np.uint8)), 21), -1.0, 255),
-        None, 0, 255, cv2.NORM_MINMAX,
-    ).astype(np.uint8)
-    color_shadow_fixed = cv2.cvtColor(cv2.merge([l_corrected, a_ch, b_ch_lab]), cv2.COLOR_LAB2BGR)
+    l_ch, a_ch, b_ch = cv2.split(lab)
+    l_bg = cv2.medianBlur(cv2.dilate(l_ch, np.ones((9, 9), np.uint8)), bg_kernel)
+    l_corrected = cv2.divide(l_ch, l_bg, scale=255)
+    l_corrected = cv2.normalize(l_corrected, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
+    color_shadow_fixed = cv2.cvtColor(cv2.merge([l_corrected, a_ch, b_ch]), cv2.COLOR_LAB2BGR)
 
     stages.append({
-        "id": "shadow", "order": 5,
-        "title": "Shadow Removal (Koreksi Iluminasi)",
-        "objective": "Menghilangkan bayangan tangan/lipatan dan pencahayaan tidak merata pada permukaan dokumen.",
-        "formula": r"B_{est}=\text{median}_{21}\big(\text{dilate}_{7\times7}(I)\big),\quad I'=255-|I-B_{est}|",
-        "math_concept": (
-            "Dilasi dengan kernel besar menghilangkan detail teks/garis, menyisakan estimasi pola "
-            "pencahayaan latar (background illumination map). Piksel asli dibandingkan terhadap peta "
-            "ini — area yang lebih gelap dari sekitarnya secara lokal (bayangan) dinaikkan kembali "
-            "mendekati putih, sementara teks/garis gelap tetap kontras."
-        ),
-        "description": "Dilasi 7×7, Median Blur kernel 21 untuk estimasi background.",
+        "id": "illumination",
+        "order": 5,
+        "title": "Shadow and Stain Normalization",
+        "objective": "Meratakan pencahayaan, mengurangi bayangan, dan membuat area kertas lebih bersih.",
+        "formula": r"B=\text{median}(\text{dilate}(I)),\quad I'=\frac{I}{B}\times255",
+        "math_concept": "Background estimation membuat peta pencahayaan lokal. Pembagian I/B menekan bayangan dan noda lembut tanpa menghapus teks gelap.",
+        "description": f"Background kernel {bg_kernel}, enhancement preset: {enhance}.",
         "image": encode_stage_preview(shadow_removed),
     })
 
-    # ── TAHAP 6: Noise Reduction ───────────────────────────────────────
-    denoised_gray = cv2.fastNlMeansDenoising(shadow_removed, h=10, templateWindowSize=7, searchWindowSize=21)
+    denoised_gray = cv2.fastNlMeansDenoising(
+        shadow_removed,
+        h=int(cfg["denoise"]),
+        templateWindowSize=7,
+        searchWindowSize=21,
+    )
     denoised_color = cv2.bilateralFilter(color_shadow_fixed, d=7, sigmaColor=50, sigmaSpace=50)
+
     stages.append({
-        "id": "denoise", "order": 6,
-        "title": "Noise Reduction",
-        "objective": "Membersihkan bintik noise sensor kamera tanpa mengaburkan tepi teks.",
-        "formula": r"NL[I]_p=\frac{1}{Z_p}\sum_{q\in S}w(p,q)\,I_q,\quad w(p,q)=e^{-\|N(p)-N(q)\|^2/h^2}",
-        "math_concept": (
-            "Non-Local Means Denoising (untuk jalur grayscale/B&W) membandingkan patch piksel di "
-            "seluruh citra, bukan hanya tetangga lokal — patch yang mirip diberi bobot tinggi meski "
-            "berjauhan, menghasilkan reduksi noise yang sangat bersih untuk teks. Jalur warna memakai "
-            "Bilateral Filter (lebih cepat) agar gradasi warna tetap natural."
-        ),
-        "description": "Grayscale: fastNlMeansDenoising h=10. Warna: Bilateral d=7.",
+        "id": "denoise",
+        "order": 6,
+        "title": "Text-Preserving Noise Reduction",
+        "objective": "Membersihkan bintik noise tanpa membuat tepi huruf terlalu lembek.",
+        "formula": r"NL[I]_p=\frac{1}{Z_p}\sum w(p,q)I_q",
+        "math_concept": "Non-Local Means membandingkan patch yang mirip di seluruh gambar. Noise kecil berkurang, sementara pola teks yang konsisten tetap dipertahankan.",
+        "description": f"fastNlMeansDenoising h={int(cfg['denoise'])}. Color path uses bilateral filtering.",
         "image": encode_stage_preview(denoised_gray),
     })
 
-    # ── TAHAP 7: Sharpening (Unsharp Masking) ─────────────────────────
-    blur_g = cv2.GaussianBlur(denoised_gray, (0, 0), 2)
-    sharpened_gray = cv2.convertScaleAbs(cv2.addWeighted(denoised_gray, 1.5, blur_g, -0.5, 0))
-    blur_c = cv2.GaussianBlur(denoised_color, (0, 0), 2)
-    sharpened_color = cv2.convertScaleAbs(cv2.addWeighted(denoised_color, 1.3, blur_c, -0.3, 0))
+    blur_gray = cv2.GaussianBlur(denoised_gray, (0, 0), 2)
+    amount_gray = float(cfg["sharp_gray"])
+    sharpened_gray = cv2.convertScaleAbs(cv2.addWeighted(denoised_gray, amount_gray, blur_gray, 1.0 - amount_gray, 0))
+
+    blur_color = cv2.GaussianBlur(denoised_color, (0, 0), 2)
+    amount_color = float(cfg["sharp_color"])
+    sharpened_color = cv2.convertScaleAbs(cv2.addWeighted(denoised_color, amount_color, blur_color, 1.0 - amount_color, 0))
+
     stages.append({
-        "id": "sharpen", "order": 7,
-        "title": "Sharpening (Unsharp Masking)",
-        "objective": "Mempertegas tepi huruf & garis agar teks terbaca jelas seperti hasil pindai asli.",
-        "formula": r"g=f+a\cdot(f-\text{Blur}(f)),\quad a_{gray}=1.5,\;a_{color}=1.3",
-        "math_concept": (
-            "Versi blur dari citra dikurangkan dari aslinya untuk mendapatkan 'lapisan detail', lalu "
-            "detail ini ditambahkan kembali dengan bobot lebih — menonjolkan tepi tajam tanpa mengubah "
-            "area datar/seragam."
-        ),
-        "description": "Gaussian σ=2 untuk basis blur, amount 1.5 (gray) / 1.3 (warna).",
+        "id": "sharpen",
+        "order": 7,
+        "title": "Text Sharpening",
+        "objective": "Mempertegas huruf, garis tabel, dan tanda tangan setelah noise reduction.",
+        "formula": r"g=f+a(f-\text{Blur}(f))",
+        "math_concept": "Unsharp masking mengambil detail dari selisih gambar asli dan gambar blur, lalu menambahkannya kembali untuk memperjelas tepi teks.",
+        "description": f"Gray amount={amount_gray}, color amount={amount_color}, sigma=2.",
         "image": encode_stage_preview(sharpened_gray),
     })
 
-    # ── TAHAP 8: Adaptive Thresholding + Output Modes ─────────────────
+    block_size = int(cfg["block"])
+    if block_size % 2 == 0:
+        block_size += 1
+
     bw = cv2.adaptiveThreshold(
-        sharpened_gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 25, 10
+        sharpened_gray,
+        255,
+        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+        cv2.THRESH_BINARY,
+        block_size,
+        int(cfg["c"]),
     )
-    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    bw = cv2.morphologyEx(bw, cv2.MORPH_OPEN, np.ones((2, 2), np.uint8), iterations=1)
+    bw = remove_tiny_dark_components(bw, min_area=int(cfg["speck"]))
+
+    clean = cv2.adaptiveThreshold(
+        sharpened_gray,
+        255,
+        cv2.ADAPTIVE_THRESH_MEAN_C,
+        cv2.THRESH_BINARY,
+        block_size,
+        max(6, int(cfg["c"]) - 2),
+    )
+    clean = remove_tiny_dark_components(clean, min_area=max(4, int(cfg["speck"]) - 2))
+
+    clahe = cv2.createCLAHE(clipLimit=float(cfg["clahe"]), tileGridSize=(8, 8))
     grayscale_mode = clahe.apply(sharpened_gray)
 
     lab2 = cv2.cvtColor(sharpened_color, cv2.COLOR_BGR2LAB)
     l2, a2, b2 = cv2.split(lab2)
-    l2_eq = clahe.apply(l2)
-    color_mode = cv2.cvtColor(cv2.merge([l2_eq, a2, b2]), cv2.COLOR_LAB2BGR)
+    color_mode = cv2.cvtColor(cv2.merge([clahe.apply(l2), a2, b2]), cv2.COLOR_LAB2BGR)
 
     stages.append({
-        "id": "threshold", "order": 8,
-        "title": "Adaptive Thresholding + Output Modes",
-        "objective": "Membuat versi biner hitam-putih kontras tinggi khas dokumen scan, plus 2 mode output lain.",
-        "formula": r"g(x,y)=\begin{cases}255 & f(x,y) > \mu_{block}(x,y) - C\\0 & \text{sebaliknya}\end{cases}",
-        "math_concept": (
-            "Berbeda dari thresholding global (satu nilai T untuk seluruh citra), adaptive threshold "
-            "menghitung ambang batas lokal μ (rata-rata Gaussian tetangga blockSize=25) per-piksel "
-            "dikurangi konstanta C=10 — sehingga tetap akurat meski pencahayaan sedikit tidak merata "
-            "antar area kertas. Mode Grayscale & Warna memakai CLAHE untuk kontras tanpa binerisasi."
-        ),
-        "description": "Adaptive Gaussian, blockSize=25, C=10. CLAHE clipLimit=2.0, tile 8×8.",
+        "id": "outputs",
+        "order": 8,
+        "title": "Scanner Output Modes",
+        "objective": "Menghasilkan beberapa mode scan: hitam-putih tegas, clean text, grayscale, dan warna enhanced.",
+        "formula": r"g(x,y)=255\;\text{if}\;f(x,y)>T_{local}(x,y)-C",
+        "math_concept": "Adaptive threshold menghitung ambang lokal per area sehingga teks tetap terbaca saat pencahayaan tidak rata. CLAHE dipakai untuk mode grayscale dan warna agar kontras naik tanpa binerisasi.",
+        "description": f"blockSize={block_size}, C={int(cfg['c'])}, CLAHE clipLimit={float(cfg['clahe'])}.",
         "image": encode_stage_preview(bw),
+        "secondary_image": encode_stage_preview(color_mode),
     })
 
     hist_before = get_histogram(original)
@@ -1045,39 +1589,48 @@ def run_document_scan_pipeline(original: np.ndarray, work_max_dim: int = 900) ->
     return {
         "grayscale": encode_image(cv2.cvtColor(grayscale_mode, cv2.COLOR_GRAY2BGR)),
         "bw": encode_image(cv2.cvtColor(bw, cv2.COLOR_GRAY2BGR)),
+        "clean": encode_image(cv2.cvtColor(clean, cv2.COLOR_GRAY2BGR)),
         "color": encode_image(color_mode),
         "stages": stages,
         "doc_detected": doc_detected,
-        "output_resolution": f"{sharpened_gray.shape[1]}×{sharpened_gray.shape[0]}",
+        "detection_score": detection_score,
+        "output_resolution": f"{sharpened_gray.shape[1]}x{sharpened_gray.shape[0]}",
         "histogram_before": hist_before,
         "histogram_after": hist_after,
     }
 
 
-# ══════════════════════════════════════════════════════
 # ADVANCED EDITOR API ROUTES
-# ══════════════════════════════════════════════════════
+
+@app.route("/api/auth/firebase", methods=["POST"])
+@require_firebase_auth
+def auth_firebase():
+    user = g.user or {}
+    return jsonify({
+        "ok": True,
+        "uid": user.get("uid"),
+        "email": user.get("email"),
+        "name": user.get("name"),
+    })
 
 @app.route("/api/editor/scan-document", methods=["POST"])
+@require_firebase_auth
 def editor_scan_document():
-    """
-    Restorasi & pemindaian dokumen bergaya CamScanner — pipeline CV klasik 8-tahap
-    (Grayscale+Blur → Canny → Contour+Quad → Perspective Transform → Shadow Removal
-     → Noise Reduction → Sharpening → Adaptive Threshold).
-    Mengembalikan 3 varian output (grayscale, hitam-putih, color enhanced) sekaligus
-    breakdown edukasi tiap tahap, agar pengguna bisa beralih mode tanpa request ulang.
-    """
+    """Scan and restore a document image with OpenCV."""
     try:
         data = request.get_json()
         img = decode_image(data.get("image"))
-        out = run_document_scan_pipeline(img)
+        options = data.get("options") or {}
+        out = run_document_scan_pipeline(img, options=options)
         return jsonify({
             "grayscale": out["grayscale"],
             "bw": out["bw"],
+            "clean": out["clean"],
             "color": out["color"],
             "method": "Document Scanner Pipeline (8 tahap)",
             "stages": out["stages"],
             "doc_detected": out["doc_detected"],
+            "detection_score": out["detection_score"],
             "output_resolution": out["output_resolution"],
             "histogram_before": out["histogram_before"],
             "histogram_after": out["histogram_after"],
@@ -1086,8 +1639,8 @@ def editor_scan_document():
         import traceback
         return jsonify({"error": str(e), "trace": traceback.format_exc()}), 500
 
-
 @app.route("/api/editor/cutout", methods=["POST"])
+@require_firebase_auth
 def editor_cutout():
     """
     Object cutout terarah (bounding box dari user) menggunakan pipeline
@@ -1113,6 +1666,7 @@ def editor_cutout():
 
 
 @app.route("/api/editor/apply", methods=["POST"])
+@require_firebase_auth
 def editor_apply():
     """
     Terapkan semua filter via OpenCV untuk export berkualitas tinggi.
@@ -1182,11 +1736,12 @@ def editor_apply():
         return jsonify({"error": str(e), "trace": traceback.format_exc()}), 500
 
 
-# ══════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 # MAIN API ROUTE
-# ══════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 @app.route("/api/process", methods=["POST"])
+@require_firebase_auth
 def process_image():
     try:
         data      = request.get_json()
@@ -1212,7 +1767,7 @@ def list_ops():
 def health():
     return jsonify({"status": "ok", "version": "2.0.0", "operations": len(OPERATIONS)})
 
-# ── Serve React build ──────────────────────────────────
+# â”€â”€ Serve React build â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 @app.route("/", defaults={"path": ""})
 @app.route("/<path:path>")
 def serve(path):
@@ -1223,3 +1778,10 @@ def serve(path):
 
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5000)
+
+
+
+
+
+
+

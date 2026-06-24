@@ -45,12 +45,21 @@ export default function PageLayout({
       setAfterUrl(res.after);
       setExplanation(res.explanation);
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e);
-      setError(
-        "Error: " +
-          msg +
-          ". Pastikan backend Flask sudah berjalan di port 5000.",
-      );
+      const err = e as {
+        response?: { status?: number; data?: { error?: string } };
+        message?: string;
+      };
+      const status = err.response?.status;
+      const serverMessage = err.response?.data?.error;
+      const fallback = err.message || String(e);
+
+      if (status && serverMessage) {
+        setError(`Error ${status}: ${serverMessage}`);
+      } else {
+        setError(
+          `Error: ${fallback}. Pastikan backend Flask sudah berjalan dan VITE_API_URL sudah benar.`,
+        );
+      }
     } finally {
       setIsLoading(false);
     }

@@ -12,6 +12,7 @@ import {
   Percent,
 } from "lucide-react";
 import { HistogramChart } from "./ExplanationPanel";
+import type { HistogramPayload } from "../api/imageApi";
 
 export interface PipelineStage {
   id: string;
@@ -31,31 +32,31 @@ interface PipelineModalProps {
   stages: PipelineStage[];
   coveragePct?: number;
   method?: string;
-  histogramBefore?: number[];
-  histogramAfter?: number[];
+  histogramBefore?: HistogramPayload;
+  histogramAfter?: HistogramPayload;
 }
 
 function StageCard({ stage }: { stage: PipelineStage }) {
   const [open, setOpen] = useState(stage.order <= 2);
 
   return (
-    <div className="rounded-xl border border-border bg-card overflow-hidden">
+    <div className="overflow-hidden rounded-xl border border-border bg-card">
       <button
         onClick={() => setOpen(!open)}
-        className="w-full flex items-center justify-between px-4 py-3 hover:bg-white/5 transition-colors"
+        className="flex w-full items-center justify-between px-4 py-3 transition-colors hover:bg-white/5"
       >
         <div className="flex items-center gap-3">
-          <span className="flex-shrink-0 w-7 h-7 rounded-full bg-accent/15 border border-accent/40 text-accent text-xs font-mono font-bold flex items-center justify-center">
+          <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full border border-accent/40 bg-accent/15 font-mono text-xs font-bold text-accent">
             {stage.order}
           </span>
-          <span className="text-sm font-semibold text-white text-left">
+          <span className="text-left text-sm font-semibold text-white">
             {stage.title}
           </span>
         </div>
         {open ? (
-          <ChevronUp size={14} className="text-muted flex-shrink-0" />
+          <ChevronUp size={14} className="flex-shrink-0 text-muted" />
         ) : (
-          <ChevronDown size={14} className="text-muted flex-shrink-0" />
+          <ChevronDown size={14} className="flex-shrink-0 text-muted" />
         )}
       </button>
 
@@ -68,54 +69,50 @@ function StageCard({ stage }: { stage: PipelineStage }) {
             transition={{ duration: 0.2 }}
             className="overflow-hidden"
           >
-            <div className="px-4 pb-4 pt-1 space-y-3">
-              {/* Objective */}
+            <div className="space-y-3 px-4 pb-4 pt-1">
               <div className="flex items-start gap-2">
                 <Target
                   size={13}
-                  className="text-accent mt-0.5 flex-shrink-0"
+                  className="mt-0.5 flex-shrink-0 text-accent"
                 />
                 <p className="text-xs text-white/80">{stage.objective}</p>
               </div>
 
-              {/* Image preview(s) + Formula side by side */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div className="rounded-lg overflow-hidden border border-border bg-[#0C1014] flex items-center justify-center min-h-[140px]">
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <div className="flex min-h-[140px] items-center justify-center overflow-hidden rounded-lg border border-border bg-[#0C1014]">
                   <img
                     src={stage.image}
                     alt={stage.title}
-                    className="max-w-full max-h-48 object-contain"
+                    className="max-h-48 max-w-full object-contain"
                   />
                 </div>
                 <div className="space-y-2">
-                  <div className="bg-[#0C1014] rounded-lg p-3 overflow-x-auto border border-border">
+                  <div className="overflow-x-auto rounded-lg border border-border bg-[#0C1014] p-3">
                     <BlockMath math={stage.formula} />
                   </div>
                   {stage.secondary_image && (
-                    <div className="rounded-lg overflow-hidden border border-border bg-[#0C1014] flex items-center justify-center">
+                    <div className="flex items-center justify-center overflow-hidden rounded-lg border border-border bg-[#0C1014]">
                       <img
                         src={stage.secondary_image}
                         alt={`${stage.title} secondary`}
-                        className="max-w-full max-h-28 object-contain"
+                        className="max-h-28 max-w-full object-contain"
                       />
                     </div>
                   )}
                 </div>
               </div>
 
-              {/* Math concept */}
-              <div className="flex items-start gap-2 bg-accent/5 border border-accent/20 rounded-lg p-3">
+              <div className="flex items-start gap-2 rounded-lg border border-accent/20 bg-accent/5 p-3">
                 <BookOpen
                   size={13}
-                  className="text-accent mt-0.5 flex-shrink-0"
+                  className="mt-0.5 flex-shrink-0 text-accent"
                 />
-                <p className="text-xs text-muted leading-relaxed">
+                <p className="text-xs leading-relaxed text-muted">
                   {stage.math_concept}
                 </p>
               </div>
 
-              {/* Description / params */}
-              <p className="text-[11px] text-muted/70 font-mono px-1">
+              <p className="px-1 font-mono text-[11px] text-muted/70">
                 {stage.description}
               </p>
             </div>
@@ -143,7 +140,7 @@ export default function PipelineModal({
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 z-[60] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
           onClick={onClose}
         >
           <motion.div
@@ -152,11 +149,10 @@ export default function PipelineModal({
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 20, scale: 0.98 }}
             transition={{ duration: 0.25 }}
-            onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-3xl max-h-[88vh] flex flex-col rounded-2xl border border-border bg-bg shadow-card overflow-hidden"
+            onClick={(event) => event.stopPropagation()}
+            className="flex max-h-[88vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-border bg-bg shadow-card"
           >
-            {/* Header */}
-            <div className="flex items-center justify-between px-5 py-4 border-b border-border bg-card flex-shrink-0">
+            <div className="flex flex-shrink-0 items-center justify-between border-b border-border bg-card px-5 py-4">
               <div className="flex items-center gap-2.5">
                 <Layers size={18} className="text-accent" />
                 <div>
@@ -167,46 +163,42 @@ export default function PipelineModal({
                     Pipeline Breakdown
                   </h3>
                   <p className="text-[11px] text-muted">
-                    {method ?? "Classical CV Segmentation Pipeline"} ·{" "}
-                    {stages.length} tahap
+                    {method ?? "Computer Vision Pipeline"} - {stages.length} tahap
                   </p>
                 </div>
               </div>
               <div className="flex items-center gap-2">
                 {typeof coveragePct === "number" && (
-                  <span className="flex items-center gap-1 text-xs font-mono text-accent bg-accent/10 border border-accent/30 px-2.5 py-1 rounded-full">
+                  <span className="flex items-center gap-1 rounded-full border border-accent/30 bg-accent/10 px-2.5 py-1 font-mono text-xs text-accent">
                     <Percent size={11} /> {coveragePct}% foreground
                   </span>
                 )}
                 <button
                   onClick={onClose}
-                  className="p-1.5 rounded-lg hover:bg-white/10 transition-colors"
+                  className="rounded-lg p-1.5 transition-colors hover:bg-white/10"
                 >
                   <X size={16} className="text-muted hover:text-white" />
                 </button>
               </div>
             </div>
 
-            {/* Body — scrollable */}
-            <div className="overflow-y-auto px-5 py-4 space-y-3 flex-1">
-              <p className="text-xs text-muted leading-relaxed pb-1">
-                Sistem penghapusan background tidak hanya mengandalkan satu
-                algoritma — melainkan kombinasi{" "}
-                <strong className="text-white">9 tahap</strong> pengolahan citra
-                klasik, dari reduksi noise hingga anti-aliasing tepi. Klik tiap
-                tahap untuk melihat formula, konsep matematis, dan hasil antara.
+            <div className="flex-1 space-y-3 overflow-y-auto px-5 py-4">
+              <p className="pb-1 text-xs leading-relaxed text-muted">
+                Pipeline ini memperlihatkan tahapan pengolahan citra dari input
+                sampai output akhir. Setiap tahap menampilkan tujuan, formula,
+                konsep, parameter, dan preview hasil antara.
               </p>
 
               {[...stages]
                 .sort((a, b) => a.order - b.order)
-                .map((s) => (
-                  <StageCard key={s.id} stage={s} />
+                .map((stage) => (
+                  <StageCard key={stage.id} stage={stage} />
                 ))}
 
-              {histogramBefore?.length || histogramAfter?.length ? (
-                <div className="rounded-xl border border-border bg-card p-4 mt-4">
-                  <p className="text-sm font-semibold text-white mb-3">
-                    Distribusi Intensitas: Asli vs Foreground Hasil
+              {histogramBefore || histogramAfter ? (
+                <div className="mt-4 rounded-xl border border-border bg-card p-4">
+                  <p className="mb-3 text-sm font-semibold text-white">
+                    Distribusi Intensitas
                   </p>
                   <HistogramChart
                     before={histogramBefore}
