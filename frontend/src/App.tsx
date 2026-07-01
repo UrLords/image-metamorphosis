@@ -137,10 +137,10 @@ export default function App() {
       />
 
       <main
-        className="min-h-screen pt-14 transition-all duration-300"
-        style={{ marginLeft: sidebarOpen ? "256px" : "0px" }}
+        className="min-h-screen pt-16 transition-all duration-300"
+        style={{ marginLeft: sidebarOpen ? "304px" : "0px" }}
       >
-        <div className="p-6">{renderPage()}</div>
+        <div className="p-6 lg:p-8">{renderPage()}</div>
       </main>
     </div>
   );

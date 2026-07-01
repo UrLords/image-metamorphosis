@@ -1,34 +1,34 @@
 {
-    "name":  "image-metamorphosis",
-    "private":  true,
-    "version":  "1.0.0",
-    "type":  "module",
-    "scripts":  {
-                    "dev":  "vite",
-                    "build":  "tsc \u0026\u0026 vite build",
-                    "preview":  "vite preview"
-                },
-    "dependencies":  {
-                         "axios":  "^1.7.4",
-                         "clsx":  "^2.1.1",
-                         "framer-motion":  "^12.38.0",
-                         "katex":  "^0.16.11",
-                         "lucide-react":  "^0.447.0",
-                         "react":  "^18.3.1",
-                         "react-dom":  "^18.3.1",
-                         "react-dropzone":  "^15.0.0",
-                         "react-katex":  "^3.0.1",
-                         "firebase":  "^11.0.1"
-                     },
-    "devDependencies":  {
-                            "@types/react":  "^18.3.5",
-                            "@types/react-dom":  "^18.3.0",
-                            "@types/react-katex":  "^3.0.4",
-                            "@vitejs/plugin-react":  "^4.3.1",
-                            "autoprefixer":  "^10.4.20",
-                            "postcss":  "^8.4.45",
-                            "tailwindcss":  "^3.4.11",
-                            "typescript":  "^5.5.3",
-                            "vite":  "^5.4.2"
-                        }
+    "name": "image-metamorphosis",
+    "private": true,
+    "version": "1.0.0",
+    "type": "module",
+    "scripts": {
+        "dev": "vite",
+        "build": "tsc && vite build",
+        "preview": "vite preview"
+    },
+    "dependencies": {
+        "axios": "^1.7.4",
+        "clsx": "^2.1.1",
+        "firebase": "^11.0.1",
+        "framer-motion": "^12.38.0",
+        "katex": "^0.16.11",
+        "lucide-react": "^0.447.0",
+        "react": "^18.3.1",
+        "react-dom": "^18.3.1",
+        "react-dropzone": "^15.0.0",
+        "react-katex": "^3.0.1"
+    },
+    "devDependencies": {
+        "@types/react": "^18.3.5",
+        "@types/react-dom": "^18.3.0",
+        "@types/react-katex": "^3.0.4",
+        "@vitejs/plugin-react": "^6.0.3",
+        "autoprefixer": "^10.4.20",
+        "postcss": "^8.4.45",
+        "tailwindcss": "^3.4.11",
+        "typescript": "^5.5.3",
+        "vite": "^8.1.0"
+    }
 }

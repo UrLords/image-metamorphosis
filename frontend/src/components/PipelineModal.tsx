@@ -24,6 +24,7 @@ export interface PipelineStage {
   description: string;
   image: string;
   secondary_image?: string;
+  pixel_matrix?: number[][];
 }
 
 interface PipelineModalProps {
@@ -34,6 +35,37 @@ interface PipelineModalProps {
   method?: string;
   histogramBefore?: HistogramPayload;
   histogramAfter?: HistogramPayload;
+}
+
+function PixelMatrix({ matrix }: { matrix?: number[][] }) {
+  if (!matrix?.length) return null;
+
+  return (
+    <div className="rounded-lg border border-border bg-[#0C1014] p-3">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">
+          Matriks Piksel 5x5
+        </p>
+        <span className="font-mono text-[10px] text-muted/70">grayscale</span>
+      </div>
+      <div className="grid grid-cols-5 overflow-hidden rounded border border-border/70 font-mono text-[10px] text-white/80">
+        {matrix.flatMap((row, rowIndex) =>
+          row.map((value, colIndex) => (
+            <div
+              key={`${rowIndex}-${colIndex}`}
+              className="flex h-7 items-center justify-center border-b border-r border-border/60 bg-white/[0.025] last:border-r-0"
+              title={`row ${rowIndex + 1}, col ${colIndex + 1}`}
+            >
+              {value}
+            </div>
+          )),
+        )}
+      </div>
+      <p className="mt-2 text-[10px] leading-relaxed text-muted/70">
+        Sampel nilai intensitas piksel dari area kiri-atas hasil tahap ini.
+      </p>
+    </div>
+  );
 }
 
 function StageCard({ stage }: { stage: PipelineStage }) {
@@ -99,6 +131,7 @@ function StageCard({ stage }: { stage: PipelineStage }) {
                       />
                     </div>
                   )}
+                  <PixelMatrix matrix={stage.pixel_matrix} />
                 </div>
               </div>
 
@@ -186,7 +219,7 @@ export default function PipelineModal({
               <p className="pb-1 text-xs leading-relaxed text-muted">
                 Pipeline ini memperlihatkan tahapan pengolahan citra dari input
                 sampai output akhir. Setiap tahap menampilkan tujuan, formula,
-                konsep, parameter, dan preview hasil antara.
+                konsep, parameter, matriks piksel, dan preview hasil antara.
               </p>
 
               {[...stages]

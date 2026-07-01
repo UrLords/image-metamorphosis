@@ -1,5 +1,5 @@
 ﻿import { motion } from "framer-motion";
-import { AlertCircle, Layers, Loader2 } from "lucide-react";
+import { AlertCircle, Loader2 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 
 export default function LoginPage() {
@@ -20,8 +20,12 @@ export default function LoginPage() {
         className="w-full max-w-sm rounded-2xl border border-border bg-card p-8 shadow-card"
       >
         <div className="flex flex-col items-center gap-3 text-center">
-          <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-accent/30 bg-accent/10">
-            <Layers size={30} className="text-accent" />
+          <div className="flex h-20 w-20 items-center justify-center rounded-2xl border border-accent/30 bg-[#080C10] p-3 shadow-[0_18px_45px_rgba(0,0,0,0.35)]">
+            <img
+              src="/imagemeta-mark.png"
+              alt="Image Metamorphosis"
+              className="h-full w-full object-contain"
+            />
           </div>
           <div>
             <h1

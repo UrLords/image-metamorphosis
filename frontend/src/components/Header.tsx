@@ -1,4 +1,4 @@
-﻿import { Layers, LogOut, Menu, UserCircle } from "lucide-react";
+import { LogOut, Menu, UserCircle } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 
 interface HeaderProps {
@@ -10,59 +10,53 @@ export default function Header({ onNavigate, onToggleSidebar }: HeaderProps) {
   const { user, logout } = useAuth();
 
   return (
-    <header
-      className="fixed left-0 right-0 top-0 z-50 flex h-14 items-center justify-between px-4"
-      style={{
-        backgroundColor: "#DFD0B8",
-        boxShadow: "0 2px 12px rgba(0,0,0,0.35)",
-      }}
-    >
+    <header className="fixed left-0 right-0 top-0 z-50 flex h-16 items-center justify-between border-b border-white/10 bg-[#080C10]/90 px-4 shadow-[0_14px_50px_rgba(0,0,0,0.36)] backdrop-blur-xl">
       <div className="flex items-center gap-3">
         <button
           onClick={onToggleSidebar}
-          className="rounded p-1.5 transition-colors hover:bg-black/10"
+          className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-white/[0.035] text-white/70 transition-all hover:border-[#C9A86C]/40 hover:bg-[#C9A86C]/10 hover:text-[#EAD7AB]"
           aria-label="Toggle sidebar"
         >
-          <Menu size={20} className="text-black" />
+          <Menu size={19} />
         </button>
         <button
-          className="flex items-center gap-1.5"
+          className="flex items-center gap-2.5 rounded-xl px-2 py-1.5 transition-colors hover:bg-white/[0.045]"
           onClick={() => onNavigate("home")}
+          aria-label="Image Metamorphosis home"
         >
-          <Layers size={18} className="text-black" />
-          <span
-            className="hidden text-sm font-semibold tracking-wide text-black sm:block"
-            style={{ fontFamily: "'Playfair Display', serif" }}
-          >
-            IM
+          <span className="flex h-9 w-9 items-center justify-center rounded-xl border border-[#C9A86C]/25 bg-[#C9A86C]/10 p-1.5">
+            <img
+              src="/imagemeta-mark.png"
+              alt=""
+              className="h-full w-full object-contain drop-shadow-[0_1px_2px_rgba(0,0,0,0.35)]"
+              aria-hidden="true"
+            />
+          </span>
+          <span className="hidden text-sm font-semibold tracking-wide text-white sm:block">
+            ImageMeta
           </span>
         </button>
       </div>
 
-      <h1
-        className="absolute left-1/2 -translate-x-1/2 text-lg font-bold tracking-tight text-black md:text-xl"
-        style={{ fontFamily: "'Playfair Display', serif" }}
-      >
-        Image Metamorphosis
-      </h1>
-
-      <div className="flex items-center gap-2">
-        {user?.photoURL ? (
-          <img
-            src={user.photoURL}
-            alt="User"
-            className="h-7 w-7 rounded-full border border-black/20"
-          />
-        ) : (
-          <UserCircle size={24} className="text-black/70" />
-        )}
-        <span className="hidden max-w-36 truncate text-xs font-medium text-black/75 sm:block">
-          {user?.displayName || user?.email}
-        </span>
+      <div className="flex items-center gap-2.5">
+        <div className="hidden items-center gap-2 rounded-xl border border-white/10 bg-white/[0.035] py-1.5 pl-2 pr-3 sm:flex">
+          {user?.photoURL ? (
+            <img
+              src={user.photoURL}
+              alt="User"
+              className="h-7 w-7 rounded-lg border border-[#C9A86C]/30 object-cover"
+            />
+          ) : (
+            <UserCircle size={24} className="text-white/55" />
+          )}
+          <span className="max-w-40 truncate text-xs font-medium text-white/72">
+            {user?.displayName || user?.email}
+          </span>
+        </div>
         <button
           type="button"
           onClick={logout}
-          className="rounded p-1.5 text-black/70 transition hover:bg-black/10 hover:text-black"
+          className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-white/[0.035] text-white/62 transition-all hover:border-red-300/30 hover:bg-red-500/10 hover:text-red-100"
           title="Logout"
           aria-label="Logout"
         >
