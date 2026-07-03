@@ -276,6 +276,86 @@ def get_histogram(img: np.ndarray) -> dict:
         empty = [0.0] * 256
         return {"red": empty, "green": empty, "blue": empty, "luminance": empty}
 
+
+def _gray_uint8(img: np.ndarray) -> np.ndarray:
+    img = img.astype(np.uint8) if img.dtype != np.uint8 else img
+    return cv2.cvtColor(img[:, :, :3], cv2.COLOR_BGR2GRAY) if len(img.shape) == 3 else img
+
+
+def get_image_metrics(img: np.ndarray) -> dict:
+    """Small, explainable metrics for a pipeline stage preview."""
+    gray = _gray_uint8(img)
+    h, w = gray.shape[:2]
+    edges = cv2.Canny(gray, 70, 170) if h > 1 and w > 1 else np.zeros_like(gray)
+    dark_mask = gray < 64
+    bright_mask = gray > 220
+    ink_mask = gray < 110
+    return {
+        "width": int(w),
+        "height": int(h),
+        "channels": int(img.shape[2]) if len(img.shape) == 3 else 1,
+        "mean": round(float(np.mean(gray)), 2),
+        "std": round(float(np.std(gray)), 2),
+        "min": int(np.min(gray)),
+        "max": int(np.max(gray)),
+        "dark_pct": round(float(np.mean(dark_mask) * 100), 2),
+        "bright_pct": round(float(np.mean(bright_mask) * 100), 2),
+        "ink_pct": round(float(np.mean(ink_mask) * 100), 2),
+        "edge_density_pct": round(float(np.mean(edges > 0) * 100), 2),
+    }
+
+
+def get_pixel_delta_matrix(before: np.ndarray, after: np.ndarray, n=5) -> list:
+    before_matrix = np.array(get_pixel_matrix(before, n=n), dtype=np.int16)
+    after_matrix = np.array(get_pixel_matrix(after, n=n), dtype=np.int16)
+    rows = min(before_matrix.shape[0], after_matrix.shape[0])
+    cols = min(before_matrix.shape[1], after_matrix.shape[1])
+    if rows == 0 or cols == 0:
+        return []
+    return (after_matrix[:rows, :cols] - before_matrix[:rows, :cols]).tolist()
+
+
+def get_stage_changes(before: np.ndarray, after: np.ndarray) -> list:
+    before_metrics = get_image_metrics(before)
+    after_metrics = get_image_metrics(after)
+
+    def entry(key: str, label: str, unit: str = "", decimals: int = 2) -> dict:
+        before_value = before_metrics[key]
+        after_value = after_metrics[key]
+        delta = round(float(after_value) - float(before_value), decimals)
+        return {
+            "key": key,
+            "label": label,
+            "before": before_value,
+            "after": after_value,
+            "delta": delta,
+            "unit": unit,
+        }
+
+    return [
+        entry("mean", "Rata-rata intensitas"),
+        entry("std", "Kontras lokal"),
+        entry("dark_pct", "Area gelap", "%"),
+        entry("bright_pct", "Area putih/terang", "%"),
+        entry("ink_pct", "Estimasi tinta/teks", "%"),
+        entry("edge_density_pct", "Kepadatan tepi", "%"),
+    ]
+
+
+def enrich_stage(stage: dict, before: np.ndarray, after: np.ndarray, pixel_source: np.ndarray | None = None) -> dict:
+    """Attach per-stage analysis so the frontend can explain what changed."""
+    pixel_source = after if pixel_source is None else pixel_source
+    stage.update({
+        "histogram": get_histogram(after),
+        "metrics_before": get_image_metrics(before),
+        "metrics_after": get_image_metrics(after),
+        "changes": get_stage_changes(before, after),
+        "pixel_matrix_before": get_pixel_matrix(before, n=5),
+        "pixel_matrix": get_pixel_matrix(pixel_source, n=5),
+        "pixel_delta_matrix": get_pixel_delta_matrix(before, pixel_source, n=5),
+    })
+    return stage
+
 def op_grayscale(img, params):
     h, w = img.shape[:2]
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
@@ -1201,8 +1281,8 @@ def run_document_scan_pipeline(original: np.ndarray, options: dict | None = None
         "math_concept": "Citra dikonversi ke grayscale agar deteksi tepi tidak terganggu variasi warna. Gaussian blur 5x5 meredam tekstur kertas dan noise kamera sebelum Canny.",
         "description": "Gaussian kernel 5x5, sigma otomatis dari OpenCV.",
         "image": encode_stage_preview(blur),
-        "pixel_matrix": get_pixel_matrix(blur, n=5),
     })
+    stages[-1] = enrich_stage(stages[-1], work, blur)
 
     stages.append({
         "id": "edges",
@@ -1213,8 +1293,8 @@ def run_document_scan_pipeline(original: np.ndarray, options: dict | None = None
         "math_concept": "Ambang Canny dihitung dari median intensitas gambar, sehingga tidak bergantung pada satu nilai tetap. Morphological closing menyambung celah tepi dokumen yang terputus.",
         "description": "Adaptive threshold Canny + morph close 7x7 + dilate 3x3.",
         "image": encode_stage_preview(edge_map),
-        "pixel_matrix": get_pixel_matrix(edge_map, n=5),
     })
+    stages[-1] = enrich_stage(stages[-1], blur, edge_map)
 
     stages.append({
         "id": "contour",
@@ -1225,8 +1305,8 @@ def run_document_scan_pipeline(original: np.ndarray, options: dict | None = None
         "math_concept": "Kontur besar disederhanakan menjadi poligon. Kandidat empat titik dinilai dari area ratio, rectangularity, dan margin. Jika tidak ada kandidat kuat, sistem fallback ke rotated bounding box.",
         "description": f"Document detected: {quad is not None}. Detection score: {detection_score}.",
         "image": encode_stage_preview(contour_vis),
-        "pixel_matrix": get_pixel_matrix(contour_vis, n=5),
     })
+    stages[-1] = enrich_stage(stages[-1], edge_map, contour_vis)
 
     warp_note = "full frame fallback"
     if quad is not None:
@@ -1267,8 +1347,8 @@ def run_document_scan_pipeline(original: np.ndarray, options: dict | None = None
         "math_concept": "Homography 3x3 memetakan empat sudut dokumen ke rectangle baru. Ini memperbaiki distorsi perspektif saat dokumen difoto dari sudut miring.",
         "description": f"Output before cap: {mw}x{mh}px. Paper mode: {paper_size}. Auto-crop: {auto_crop}. {warp_note}.",
         "image": encode_stage_preview(warped_color),
-        "pixel_matrix": get_pixel_matrix(warped_color, n=5),
     })
+    stages[-1] = enrich_stage(stages[-1], original, warped_color)
 
     warped_gray = cv2.cvtColor(warped_color, cv2.COLOR_BGR2GRAY)
 
@@ -1293,8 +1373,8 @@ def run_document_scan_pipeline(original: np.ndarray, options: dict | None = None
         "math_concept": "Background estimation membuat peta pencahayaan lokal. Pembagian I/B menekan bayangan dan noda lembut tanpa menghapus teks gelap.",
         "description": f"Background kernel {bg_kernel}, enhancement preset: {enhance}.",
         "image": encode_stage_preview(shadow_removed),
-        "pixel_matrix": get_pixel_matrix(shadow_removed, n=5),
     })
+    stages[-1] = enrich_stage(stages[-1], warped_gray, shadow_removed)
 
     denoised_gray = cv2.fastNlMeansDenoising(
         shadow_removed,
@@ -1313,8 +1393,8 @@ def run_document_scan_pipeline(original: np.ndarray, options: dict | None = None
         "math_concept": "Non-Local Means membandingkan patch yang mirip di seluruh gambar. Noise kecil berkurang, sementara pola teks yang konsisten tetap dipertahankan.",
         "description": f"fastNlMeansDenoising h={int(cfg['denoise'])}. Color path uses bilateral filtering.",
         "image": encode_stage_preview(denoised_gray),
-        "pixel_matrix": get_pixel_matrix(denoised_gray, n=5),
     })
+    stages[-1] = enrich_stage(stages[-1], shadow_removed, denoised_gray)
 
     blur_gray = cv2.GaussianBlur(denoised_gray, (0, 0), 2)
     amount_gray = float(cfg["sharp_gray"])
@@ -1333,8 +1413,8 @@ def run_document_scan_pipeline(original: np.ndarray, options: dict | None = None
         "math_concept": "Unsharp masking mengambil detail dari selisih gambar asli dan gambar blur, lalu menambahkannya kembali untuk memperjelas tepi teks.",
         "description": f"Gray amount={amount_gray}, color amount={amount_color}, sigma=2.",
         "image": encode_stage_preview(sharpened_gray),
-        "pixel_matrix": get_pixel_matrix(sharpened_gray, n=5),
     })
+    stages[-1] = enrich_stage(stages[-1], denoised_gray, sharpened_gray)
 
     block_size = int(cfg["block"])
     if block_size % 2 == 0:
@@ -1378,8 +1458,8 @@ def run_document_scan_pipeline(original: np.ndarray, options: dict | None = None
         "description": f"blockSize={block_size}, C={int(cfg['c'])}, CLAHE clipLimit={float(cfg['clahe'])}.",
         "image": encode_stage_preview(bw),
         "secondary_image": encode_stage_preview(color_mode),
-        "pixel_matrix": get_pixel_matrix(bw, n=5),
     })
+    stages[-1] = enrich_stage(stages[-1], sharpened_gray, bw)
 
     hist_before = get_histogram(original)
     hist_after = get_histogram(cv2.cvtColor(bw, cv2.COLOR_GRAY2BGR))
