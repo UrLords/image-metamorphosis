@@ -188,9 +188,6 @@ def require_firebase_auth(fn):
         return fn(*args, **kwargs)
 
     return wrapper
-# ══════════════════════════════════════════════════════
-# HELPERS
-# ══════════════════════════════════════════════════════
 
 def decode_image(b64: str) -> np.ndarray:
     if not isinstance(b64, str) or "," not in b64:
@@ -750,7 +747,7 @@ def op_opacity(img, params):
     """
     Opacity: blend gambar dengan warna background (putih/hitam)
     """
-    opacity_val = float_param(params, "opacity", 50, 0, 100)  # 0-100
+    opacity_val = float_param(params, "opacity", 50, 0, 100)
     bg_color = choice_param(params, "bg_color", "white", {"white", "black"})
 
     alpha = opacity_val / 100.0
@@ -1027,9 +1024,6 @@ def op_segmentation(img, params):
     }}
 
 
-# ══════════════════════════════════════════════════════
-# OPERATIONS ROUTER
-# ══════════════════════════════════════════════════════
 
 OPERATIONS = {
     "grayscale":        op_grayscale,
@@ -1064,11 +1058,11 @@ def order_points(pts: np.ndarray) -> np.ndarray:
     """Urutkan 4 titik sudut menjadi [top-left, top-right, bottom-right, bottom-left]."""
     rect = np.zeros((4, 2), dtype="float32")
     s = pts.sum(axis=1)
-    rect[0] = pts[np.argmin(s)]          # top-left  → jumlah x+y terkecil
-    rect[2] = pts[np.argmax(s)]          # bottom-right → jumlah x+y terbesar
+    rect[0] = pts[np.argmin(s)]
+    rect[2] = pts[np.argmax(s)]
     diff = np.diff(pts, axis=1)
-    rect[1] = pts[np.argmin(diff)]       # top-right → selisih x-y terkecil
-    rect[3] = pts[np.argmax(diff)]       # bottom-left → selisih x-y terbesar
+    rect[1] = pts[np.argmin(diff)]
+    rect[3] = pts[np.argmax(diff)]
     return rect
 
 
@@ -1478,7 +1472,6 @@ def run_document_scan_pipeline(original: np.ndarray, options: dict | None = None
     }
 
 
-# ADVANCED EDITOR API ROUTES
 
 @app.route("/api/auth/firebase", methods=["POST"])
 @require_firebase_auth
@@ -1530,33 +1523,28 @@ def editor_apply():
         img    = decode_image(data.get("image"))
         p      = ensure_dict(data.get("params", {}), "params")
 
-        # Brightness + Contrast
         alpha = 1.0 + float_param(p, "contrast", 0, -100, 100) / 100.0
         beta  = float_param(p, "brightness", 0, -100, 100) * 2.55
         img   = cv2.convertScaleAbs(img, alpha=alpha, beta=beta)
 
-        # Saturation
         sat = float_param(p, "saturation", 0, -100, 100)
         if sat != 0:
             hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV).astype(np.float32)
             hsv[:,:,1] = np.clip(hsv[:,:,1] * (1 + sat/100), 0, 255)
             img = cv2.cvtColor(hsv.astype(np.uint8), cv2.COLOR_HSV2BGR)
 
-        # Hue
         hue = int_param(p, "hue", 0, -180, 180)
         if hue != 0:
             hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV).astype(np.int32)
             hsv[:,:,0] = (hsv[:,:,0] + hue // 2) % 180
             img = cv2.cvtColor(hsv.astype(np.uint8), cv2.COLOR_HSV2BGR)
 
-        # Blur
         blur_v = float_param(p, "blur", 0, 0, 100)
         if blur_v > 0:
             sigma = blur_v / 10.0
             ksize = max(3, int(sigma * 3) | 1)
             img = cv2.GaussianBlur(img, (ksize, ksize), sigma)
 
-        # Sharpness (Unsharp Mask)
         sharp = float_param(p, "sharpness", 0, 0, 100)
         if sharp > 0:
             blur_img = cv2.GaussianBlur(img, (0, 0), 2)
@@ -1564,21 +1552,18 @@ def editor_apply():
                 img.astype(np.float32) + (sharp/100*2) * (img.astype(np.float32) - blur_img.astype(np.float32))
             )
 
-        # Opacity
         opacity_v = float_param(p, "opacity", 100, 0, 100)
         if opacity_v < 100:
             a = opacity_v / 100.0
             white = np.full_like(img, 255)
             img = cv2.addWeighted(img, a, white, 1-a, 0)
 
-        # Rotation
         angle = int_param(p, "rotation", 0, -360, 360)
         if angle != 0:
             h, w = img.shape[:2]
             M = cv2.getRotationMatrix2D((w//2, h//2), -angle, 1)
             img = cv2.warpAffine(img, M, (w, h))
 
-        # Flip
         if bool_param(p, "flipH"): img = cv2.flip(img, 1)
         if bool_param(p, "flipV"): img = cv2.flip(img, 0)
 
@@ -1590,9 +1575,6 @@ def editor_apply():
         return internal_error_response(e)
 
 
-# ══════════════════════════════════════════════════════
-# MAIN API ROUTE
-# ══════════════════════════════════════════════════════
 
 @app.route("/api/process", methods=["POST"])
 @require_firebase_auth
@@ -1622,7 +1604,6 @@ def list_ops():
 def health():
     return jsonify({"status": "ok", "version": "2.0.0", "operations": len(OPERATIONS)})
 
-# ── Serve React build ──────────────────────────────────
 @app.route("/", defaults={"path": ""})
 @app.route("/<path:path>")
 def serve(path):

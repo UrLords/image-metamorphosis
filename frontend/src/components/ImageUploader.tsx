@@ -1,4 +1,3 @@
-// src/components/ImageUploader.tsx
 import { useCallback } from "react";
 import { useDropzone } from "react-dropzone";
 import { UploadCloud, Image as ImageIcon } from "lucide-react";
@@ -38,14 +37,12 @@ export default function ImageUploader({
       </p>
 
       {imageUrl ? (
-        /* Preview mode */
         <div className="relative group rounded-xl overflow-hidden border border-border bg-card">
           <img
             src={imageUrl}
             alt="Input"
             className="w-full object-contain max-h-72"
           />
-          {/* Overlay to re-upload */}
           <div
             {...getRootProps()}
             className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center cursor-pointer"
@@ -56,7 +53,6 @@ export default function ImageUploader({
           </div>
         </div>
       ) : (
-        /* Drop zone */
         <div
           {...getRootProps()}
           className={`

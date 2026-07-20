@@ -17,6 +17,7 @@ import apiClient from "../api/axiosClient";
 import { HistogramChart } from "../components/ExplanationPanel";
 import PipelineModal, { type PipelineStage } from "../components/PipelineModal";
 import type { HistogramPayload } from "../api/imageApi";
+import { useAuth } from "../context/AuthContext";
 
 type ScanMode = "bw" | "clean" | "grayscale" | "color";
 type ScanPreset = "document" | "receipt" | "id";
@@ -111,6 +112,7 @@ function SelectControl<T extends string>({
 }
 
 export default function ScanDocument() {
+  const { requireAuth } = useAuth();
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [result, setResult] = useState<ScanResult | null>(null);
   const [activeMode, setActiveMode] = useState<ScanMode>("bw");
@@ -151,6 +153,7 @@ export default function ScanDocument() {
 
   const handleScan = async () => {
     if (!imageUrl) return;
+    if (!requireAuth()) return;
     setProcessing(true);
     try {
       const res = await apiClient.post<ScanResult>("/editor/scan-document", {

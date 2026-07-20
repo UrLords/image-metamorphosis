@@ -2,7 +2,6 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Base */
 * {
   box-sizing: border-box;
 }
@@ -14,7 +13,6 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* Scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -30,7 +28,6 @@ body {
   background: #948979;
 }
 
-/* KaTeX override */
 .katex {
   font-size: 1.05em !important;
   color: #c9a86c !important;
@@ -39,7 +36,6 @@ body {
   overflow-x: auto;
 }
 
-/* Pixel matrix table */
 .pixel-matrix td {
   width: 36px;
   height: 36px;
@@ -51,7 +47,6 @@ body {
   color: #dfd0b8;
 }
 
-/* Kernel table */
 .kernel-matrix td {
   width: 44px;
   height: 44px;
@@ -64,13 +59,11 @@ body {
   font-weight: 600;
 }
 
-/* Drag-drop zone */
 .dropzone-active {
   border-color: #c9a86c !important;
   background-color: rgba(201, 168, 108, 0.05) !important;
 }
 
-/* Image comparison slider */
 .compare-container {
   position: relative;
   overflow: hidden;
@@ -98,7 +91,6 @@ body {
   white-space: nowrap;
 }
 
-/* Step badge */
 .step-badge {
   display: inline-flex;
   align-items: center;

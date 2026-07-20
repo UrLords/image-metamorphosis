@@ -1,16 +1,15 @@
-/** @type {import('tailwindcss').Config} */
 export default {
   content: ["./index.html", "./src/**/*.{js,ts,jsx,tsx}"],
   theme: {
     extend: {
       colors: {
-        bg: "#0C1014", // background utama
-        header: "#DFD0B8", // header bar
-        sidebar: "#948979", // sidebar/menubar
-        card: "#141B22", // card background
-        border: "#2A3340", // border
-        accent: "#C9A86C", // aksen utama
-        muted: "#6B7A8D", // text muted
+        bg: "#0C1014",
+        header: "#DFD0B8",
+        sidebar: "#948979",
+        card: "#141B22",
+        border: "#2A3340",
+        accent: "#C9A86C",
+        muted: "#6B7A8D",
       },
       fontFamily: {
         display: ['"Playfair Display"', "Georgia", "serif"],

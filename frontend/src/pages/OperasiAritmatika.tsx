@@ -2,7 +2,6 @@ import { useState } from "react";
 import PageLayout from "../components/PageLayout";
 import { Slider } from "../components/Controls";
 
-// Blending
 export function BlendingPage() {
   const [alpha, setAlpha] = useState(50);
 
@@ -32,7 +31,6 @@ export function BlendingPage() {
   );
 }
 
-// Background subtraction
 export function SubtractionPage() {
   return (
     <PageLayout
@@ -49,7 +47,6 @@ export function SubtractionPage() {
   );
 }
 
-// Multiplication
 export function MultiplyPage() {
   return (
     <PageLayout
@@ -67,7 +64,6 @@ export function MultiplyPage() {
   );
 }
 
-// Division
 export function DividePage() {
   return (
     <PageLayout
@@ -85,7 +81,6 @@ export function DividePage() {
   );
 }
 
-// Router
 export default function OperasiAritmatika({ subpage }: { subpage?: string }) {
   if (subpage === "subtraction") return <SubtractionPage />;
 

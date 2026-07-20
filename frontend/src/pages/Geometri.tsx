@@ -2,7 +2,6 @@ import { useState } from "react";
 import PageLayout from "../components/PageLayout";
 import { Slider, Select } from "../components/Controls";
 
-// Rotation
 export function RotasiPage() {
   const [angle, setAngle] = useState(45);
   return (
@@ -25,7 +24,6 @@ export function RotasiPage() {
   );
 }
 
-// Scaling
 export function ScalingPage() {
   const [sx, setSx] = useState(150);
   const [sy, setSy] = useState(150);
@@ -58,7 +56,6 @@ export function ScalingPage() {
   );
 }
 
-// Translation
 export function TranslasiPage() {
   const [tx, setTx] = useState(50);
   const [ty, setTy] = useState(50);
@@ -91,7 +88,6 @@ export function TranslasiPage() {
   );
 }
 
-// Flip
 export function FlipPage() {
   const [mode, setMode] = useState("horizontal");
   return (
@@ -115,7 +111,6 @@ export function FlipPage() {
   );
 }
 
-// Router
 export default function Geometri({ subpage }: { subpage?: string }) {
   switch (subpage) {
     case "scaling":

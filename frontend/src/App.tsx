@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { Loader2 } from "lucide-react";
 import Header from "./components/Header";
 import Sidebar from "./components/Sidebar";
+import AuthPromptModal from "./components/AuthPromptModal";
 import Home from "./pages/Home";
 import DasarCitra from "./pages/DasarCitra";
 import OperasiAritmatika from "./pages/OperasiAritmatika";
@@ -13,8 +13,6 @@ import DeteksiTepi from "./pages/DeteksiTepi";
 import SegmentasiCitra from "./pages/SegmentasiCitra";
 import AdvancedEditor from "./pages/AdvancedEditor";
 import ScanDocument from "./pages/ScanDocument";
-import LoginPage from "./pages/LoginPage";
-import { useAuth } from "./context/AuthContext";
 
 const OPERATION_PAGE: Record<string, string> = {
   grayscale: "dasar",
@@ -60,23 +58,14 @@ const DEFAULT_OPERATION: Record<string, string> = {
 };
 
 export default function App() {
-  const { user, loading } = useAuth();
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(() =>
+    window.matchMedia("(min-width: 1024px)").matches,
+  );
   const [activePage, setActivePage] = useState("home");
   const [activeOperation, setActiveOperation] = useState("grayscale");
   const [activeSubpage, setActiveSubpage] = useState<string | undefined>(
     undefined,
   );
-
-  if (loading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-bg text-accent">
-        <Loader2 size={28} className="animate-spin" />
-      </div>
-    );
-  }
-
-  if (!user) return <LoginPage />;
 
   const handleNavigate = (page: string) => {
     setActivePage(page);
@@ -137,11 +126,13 @@ export default function App() {
       />
 
       <main
-        className="min-h-screen pt-16 transition-all duration-300"
-        style={{ marginLeft: sidebarOpen ? "304px" : "0px" }}
+        className={`min-h-screen pt-16 transition-all duration-300 ${
+          sidebarOpen ? "lg:ml-[304px]" : ""
+        }`}
       >
         <div className="p-6 lg:p-8">{renderPage()}</div>
       </main>
+      <AuthPromptModal />
     </div>
   );
 }

@@ -19,8 +19,12 @@ interface AuthContextValue {
   user: User | null;
   loading: boolean;
   error: string | null;
+  isLoginPromptOpen: boolean;
   signInWithGoogle: () => Promise<void>;
   logout: () => Promise<void>;
+  openLoginPrompt: () => void;
+  closeLoginPrompt: () => void;
+  requireAuth: () => boolean;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -29,6 +33,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isLoginPromptOpen, setLoginPromptOpen] = useState(false);
 
   useEffect(() => {
     return onAuthStateChanged(auth, async (firebaseUser) => {
@@ -49,6 +54,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setError(null);
     try {
       await signInWithPopup(auth, googleProvider);
+      setLoginPromptOpen(false);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Login failed";
       if (!message.includes("popup-closed-by-user")) {
@@ -61,9 +67,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await signOut(auth);
   };
 
+  const openLoginPrompt = () => {
+    setError(null);
+    setLoginPromptOpen(true);
+  };
+
+  const closeLoginPrompt = () => setLoginPromptOpen(false);
+
+  const requireAuth = () => {
+    if (user) return true;
+    openLoginPrompt();
+    return false;
+  };
+
   const value = useMemo(
-    () => ({ user, loading, error, signInWithGoogle, logout }),
-    [user, loading, error],
+    () => ({
+      user,
+      loading,
+      error,
+      isLoginPromptOpen,
+      signInWithGoogle,
+      logout,
+      openLoginPrompt,
+      closeLoginPrompt,
+      requireAuth,
+    }),
+    [user, loading, error, isLoginPromptOpen],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

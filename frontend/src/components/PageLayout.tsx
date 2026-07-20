@@ -5,6 +5,7 @@ import BeforeAfter from "./BeforeAfter";
 import ExplanationPanel from "./ExplanationPanel";
 import { ProcessButton, ErrorBanner } from "./Controls";
 import { processImage, type Explanation } from "../api/imageApi";
+import { useAuth } from "../context/AuthContext";
 
 interface PageLayoutProps {
   title: string;
@@ -23,6 +24,7 @@ export default function PageLayout({
   children,
   secondImageNeeded = false,
 }: PageLayoutProps) {
+  const { requireAuth } = useAuth();
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [secondUrl, setSecondUrl] = useState<string | null>(null);
   const [afterUrl, setAfterUrl] = useState<string | null>(null);
@@ -35,6 +37,7 @@ export default function PageLayout({
       setError("Upload gambar terlebih dahulu!");
       return;
     }
+    if (!requireAuth()) return;
     setIsLoading(true);
     setError(null);
     try {
@@ -72,7 +75,6 @@ export default function PageLayout({
       transition={{ duration: 0.35 }}
       className="max-w-6xl mx-auto space-y-6"
     >
-      {/* Page header */}
       <div className="border-b border-border pb-4">
         <h2
           className="text-2xl font-bold text-white"
@@ -84,7 +86,6 @@ export default function PageLayout({
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-        {/* Left panel: Upload + Controls */}
         <div className="xl:col-span-1 space-y-4">
           <div className="rounded-xl border border-border bg-card p-4 space-y-4">
             <ImageUploader imageUrl={imageUrl} onImageChange={setImageUrl} />
@@ -97,7 +98,6 @@ export default function PageLayout({
             )}
           </div>
 
-          {/* Controls card */}
           {children && (
             <div className="rounded-xl border border-border bg-card p-4 space-y-4">
               <p className="text-xs font-semibold text-muted uppercase tracking-widest">
@@ -115,7 +115,6 @@ export default function PageLayout({
           />
         </div>
 
-        {/* Right panel: Before/After + Explanation */}
         <div className="xl:col-span-2 space-y-6">
           <div className="rounded-xl border border-border bg-card p-4">
             <BeforeAfter

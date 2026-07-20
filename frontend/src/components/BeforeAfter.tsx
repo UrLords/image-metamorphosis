@@ -14,7 +14,6 @@ export default function BeforeAfter({
 }: BeforeAfterProps) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full">
-      {/* Before */}
       <div className="flex flex-col gap-2">
         <div className="flex items-center gap-2">
           <div className="w-2 h-2 rounded-full bg-muted"></div>
@@ -38,7 +37,6 @@ export default function BeforeAfter({
         </div>
       </div>
 
-      {/* After */}
       <div className="flex flex-col gap-2">
         <div className="flex items-center gap-2">
           <div className="w-2 h-2 rounded-full bg-accent"></div>
@@ -53,7 +51,6 @@ export default function BeforeAfter({
               transition={{ duration: 1.5, repeat: Infinity }}
               className="flex flex-col items-center gap-3 py-12"
             >
-              {/* Spinner */}
               <div className="relative w-12 h-12">
                 <div className="absolute inset-0 rounded-full border-2 border-accent/20"></div>
                 <motion.div

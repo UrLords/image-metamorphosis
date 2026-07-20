@@ -16,6 +16,7 @@ import {
   Upload,
   X,
 } from "lucide-react";
+import { useAuth } from "../context/AuthContext";
 
 const API_BASE_URL = import.meta.env.VITE_PUBLIC_API_URL || import.meta.env.VITE_API_URL || "/api";
 
@@ -136,6 +137,7 @@ function ToolButton({
 }
 
 export default function AdvancedEditor() {
+  const { requireAuth } = useAuth();
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [originalUrl, setOriginalUrl] = useState<string | null>(null);
   const [state, setState] = useState<EditorState>(DEFAULT_STATE);
@@ -337,6 +339,7 @@ export default function AdvancedEditor() {
 
   const download = async (format: "png" | "jpg") => {
     if (!imageUrl) return;
+    if (!requireAuth()) return;
     try {
       const result = await callEditorEndpoint(
         "/editor/apply",
