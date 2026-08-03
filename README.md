@@ -12,6 +12,14 @@ Image Metamorphosis is an interactive image processing platform built for learni
 
 Most image tools only show the output. Image Metamorphosis connects the output with explanations, formulas, histograms, and side-by-side comparison so the processing concept is easier to understand and present.
 
+## Preview
+
+<p align="center">
+  <a href="https://imagemeta.site">
+    <img src="./assets/imagemeta-preview.png" alt="Image Metamorphosis dashboard showing learning areas and image processing tools" width="100%" />
+  </a>
+</p>
+
 ## Highlights
 
 - Interactive image upload and before-after comparison.
